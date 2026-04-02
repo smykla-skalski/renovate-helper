@@ -46,24 +46,25 @@ var (
 )
 
 type Model struct {
-	help       help.Model
-	client     *github.Client
-	cfg        *config.Config
-	pendingCmd tea.Cmd
-	status     string
-	labelInput textinput.Model
-	spinner    spinner.Model
-	filter     filter.Model
-	labelPR    github.PR
-	list       list.Model
-	detail     detail.Model
-	lastFetch  int64
-	width      int
-	height     int
-	current    view
-	loading    bool
-	statusErr  bool
-	confirming bool
+	statusUntil time.Time
+	help        help.Model
+	client      *github.Client
+	cfg         *config.Config
+	pendingCmd  tea.Cmd
+	status      string
+	labelInput  textinput.Model
+	spinner     spinner.Model
+	filter      filter.Model
+	labelPR     github.PR
+	list        list.Model
+	detail      detail.Model
+	lastFetch   int64
+	width       int
+	height      int
+	current     view
+	loading     bool
+	statusErr   bool
+	confirming  bool
 }
 
 func New(client *github.Client, cfg *config.Config) Model {
@@ -120,7 +121,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.loading = false
 		m.lastFetch = time.Now().UnixNano()
 		m.list = m.list.SetPRs(msg.prs)
-		m.status = fmt.Sprintf("%d PRs", len(msg.prs))
+		if time.Now().After(m.statusUntil) {
+			m.status = fmt.Sprintf("%d PRs", len(msg.prs))
+		}
 		return m, tea.Every(m.cfg.RefreshInterval, func(t time.Time) tea.Msg {
 			return fetchPRsCmd(m.client, m.cfg)()
 		})
@@ -148,6 +151,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.status = "fix-ci done: " + msg.dir
 		m.statusErr = false
 		return m, fetchPRsCmd(m.client, m.cfg)
+
+	case clipboardDoneMsg:
+		m.status = fmt.Sprintf("copied %d links", msg.count)
+		m.statusErr = false
+		m.statusUntil = time.Now().Add(3 * time.Second)
+		return m, nil
 
 	case actionDoneMsg:
 		m.status = msg.msg
@@ -285,6 +294,18 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, rerunChecksCmd(m.client, pr)
 		}
 		return m, nil
+
+	case key.Matches(msg, keys.CopyLinks):
+		prs := m.list.PRsNeedingApprovalInGroup()
+		if len(prs) == 0 {
+			m.status = "no PRs need approval"
+			return m, nil
+		}
+		urls := make([]string, len(prs))
+		for i := range prs {
+			urls[i] = prs[i].URL
+		}
+		return m, copyToClipboardCmd(strings.Join(urls, "\n"), len(prs))
 
 	case key.Matches(msg, keys.FixCI):
 		if pr, ok := m.list.Selected(); ok {
@@ -432,18 +453,13 @@ func (m Model) renderBottomBar() string {
 	switch m.current {
 	case viewList:
 		hints = []string{
-			helpHint("j/k", "navigate"),
-			helpHint("space", "select"),
-			helpHint("enter", "detail"),
 			helpHint("m/M", "merge"),
 			helpHint("a/A", "approve"),
-			helpHint("/", "filter"),
-			helpHint("s", "sort"),
+			helpHint("c", "copy links"),
 			helpHint("f", "fix CI"),
+			helpHint("/", "filter"),
 			helpHint("o", "open"),
-			helpHint("esc", "clear filter"),
 			helpHint("?", "help"),
-			helpHint("q", "quit"),
 		}
 	case viewDetail:
 		hints = []string{
@@ -468,6 +484,12 @@ func (m Model) renderBottomBar() string {
 
 	helpLine := strings.Join(hints, sep)
 
+	// Truncate hints if they'd push status off screen
+	maxHelp := m.width - 30 // reserve space for status
+	if maxHelp > 0 && lipgloss.Width(helpLine) > maxHelp {
+		helpLine = helpLine[:maxHelp] + styleDim.Render("…")
+	}
+
 	var status string
 	switch {
 	case m.confirming:
@@ -483,7 +505,10 @@ func (m Model) renderBottomBar() string {
 		status = styleDim.Render(fmt.Sprintf("↻ %s ago", ago))
 	}
 
-	gap := max(2, m.width-lipgloss.Width(helpLine)-lipgloss.Width(status))
+	pad := 2
+	innerW := m.width - 2*pad
+	gap := max(2, innerW-lipgloss.Width(helpLine)-lipgloss.Width(status))
+	lr := strings.Repeat(" ", pad)
 
-	return styleBottomBar.Render(helpLine + strings.Repeat(" ", gap) + status)
+	return styleBottomBar.Render(lr + helpLine + strings.Repeat(" ", gap) + status + lr)
 }

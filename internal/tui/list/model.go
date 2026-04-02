@@ -140,6 +140,23 @@ func (m Model) SelectedPRsInGroup() []github.PR {
 	return prs
 }
 
+// PRsNeedingApprovalInGroup returns PRs in the current repo group that need
+// review and don't have failing checks.
+func (m Model) PRsNeedingApprovalInGroup() []github.PR {
+	if len(m.filtered) == 0 {
+		return nil
+	}
+	repo := m.filtered[m.cursor].Repo
+	var prs []github.PR
+	for i := range m.filtered {
+		pr := m.filtered[i]
+		if pr.Repo == repo && pr.ReviewStatus == reviewRequired && pr.CheckStatus != statusFailure {
+			prs = append(prs, pr)
+		}
+	}
+	return prs
+}
+
 // CurrentRepo returns the repo of the currently focused PR.
 func (m Model) CurrentRepo() string {
 	if len(m.filtered) == 0 {
