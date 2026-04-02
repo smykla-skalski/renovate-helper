@@ -1,0 +1,15 @@
+[tools]
+go = "1.24"
+goreleaser = "latest"
+
+[tasks.dev]
+description = "Start the app"
+run = "go run main.go"
+
+[tasks.build]
+description = "Build binary"
+run = "go build -o gh-renovate-tracker ."
+
+[tasks.release-snapshot]
+description = "Build snapshot release"
+run = "goreleaser build --snapshot --clean"
