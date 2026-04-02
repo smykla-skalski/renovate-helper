@@ -1,0 +1,80 @@
+version: "2"
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - gosimple
+    - ineffassign
+    - unused
+    - gocritic
+    - revive
+    - gofumpt
+    - nolintlint
+    - nilaway
+    - bodyclose
+    - contextcheck
+    - dupword
+    - errorlint
+    - exhaustive
+    - fatcontext
+    - forcetypeassert
+    - gocheckcompilerdirectives
+    - goconst
+    - godot
+    - mirror
+    - misspell
+    - musttag
+    - nilerr
+    - nilnil
+    - noctx
+    - predeclared
+    - reassign
+    - rowserrcheck
+    - sqlclosecheck
+    - testifylint
+    - unconvert
+    - unparam
+    - wastedassign
+    - whitespace
+
+linters-settings:
+  gofumpt:
+    extra-rules: true
+  govet:
+    enable-all: true
+  revive:
+    rules:
+      - name: exported
+      - name: error-return
+      - name: error-strings
+      - name: var-naming
+      - name: blank-imports
+      - name: context-as-argument
+      - name: dot-imports
+      - name: empty-block
+      - name: superfluous-else
+      - name: unreachable-code
+      - name: redefines-builtin-id
+  gocritic:
+    enabled-tags:
+      - diagnostic
+      - style
+      - performance
+  nolintlint:
+    require-explanation: true
+    require-specific: true
+  nilaway:
+    include-pkgs:
+      - github.com/klaudiush/gh-renovate-tracker/...
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - forcetypeassert
+        - unparam
+        - gocritic
