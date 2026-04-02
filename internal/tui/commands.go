@@ -39,6 +39,7 @@ type (
 		dir   string
 		prKey string
 	}
+	clipboardDoneMsg struct{ count int }
 )
 
 func fetchPRsCmd(client *github.Client, cfg *config.Config) tea.Cmd {

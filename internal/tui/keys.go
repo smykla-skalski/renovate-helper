@@ -19,6 +19,7 @@ type keyMap struct {
 	Open       key.Binding
 	Select     key.Binding
 	FixCI      key.Binding
+	CopyLinks  key.Binding
 	Help       key.Binding
 	Quit       key.Binding
 }
@@ -40,6 +41,7 @@ var keys = keyMap{
 	Open:       key.NewBinding(key.WithKeys("o"), key.WithHelp("o", "open in browser")),
 	Select:     key.NewBinding(key.WithKeys(" "), key.WithHelp("space", "select")),
 	FixCI:      key.NewBinding(key.WithKeys("f"), key.WithHelp("f", "fix CI")),
+	CopyLinks:  key.NewBinding(key.WithKeys("c"), key.WithHelp("c", "copy review links")),
 	Help:       key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "help")),
 	Quit:       key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit")),
 }
