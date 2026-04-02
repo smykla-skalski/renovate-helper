@@ -129,9 +129,9 @@ func TestRenderStatus_Confirming(t *testing.T) {
 	m.confirming = true
 	m.status = "Merge org/repo#10? (y/n)"
 
-	s := m.renderStatus()
+	s := m.renderBottomBar()
 	if s == "" {
-		t.Error("renderStatus should return non-empty for confirming state")
+		t.Error("renderBottomBar should return non-empty for confirming state")
 	}
 }
 
@@ -139,9 +139,9 @@ func TestRenderStatus_Loading(t *testing.T) {
 	m := newTestModel()
 	m.loading = true
 
-	s := m.renderStatus()
+	s := m.renderBottomBar()
 	if s == "" {
-		t.Error("renderStatus should return non-empty for loading state")
+		t.Error("renderBottomBar should return non-empty for loading state")
 	}
 }
 
@@ -150,9 +150,9 @@ func TestRenderStatus_Error(t *testing.T) {
 	m.statusErr = true
 	m.status = "something failed"
 
-	s := m.renderStatus()
+	s := m.renderBottomBar()
 	if s == "" {
-		t.Error("renderStatus should return non-empty for error state")
+		t.Error("renderBottomBar should return non-empty for error state")
 	}
 }
 
@@ -160,8 +160,8 @@ func TestRenderStatus_LastFetch(t *testing.T) {
 	m := newTestModel()
 	m.lastFetch = time.Now().Add(-10 * time.Second).UnixNano()
 
-	s := m.renderStatus()
+	s := m.renderBottomBar()
 	if s == "" {
-		t.Error("renderStatus should return non-empty with lastFetch")
+		t.Error("renderBottomBar should return non-empty with lastFetch")
 	}
 }

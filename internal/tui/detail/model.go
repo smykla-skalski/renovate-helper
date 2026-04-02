@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 
 	"github.com/klaudiush/gh-renovate-tracker/internal/github"
 )
@@ -19,21 +18,46 @@ const (
 type Model struct {
 	pr     github.PR
 	scroll int
+	width  int
+	height int
 }
 
 func New(pr github.PR) Model {
 	return Model{pr: pr}
 }
 
+func (m Model) SetSize(w, h int) Model {
+	m.width = w
+	m.height = h
+	return m
+}
+
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
-	if msg, ok := msg.(tea.KeyMsg); ok {
-		switch msg.String() {
-		case "j", "down":
+	switch msg := msg.(type) {
+	case tea.KeyPressMsg:
+		switch msg.Key().Code {
+		case tea.KeyDown:
 			m.scroll++
-		case "k", "up":
+		case tea.KeyUp:
 			if m.scroll > 0 {
 				m.scroll--
 			}
+		default:
+			switch msg.String() {
+			case "j":
+				m.scroll++
+			case "k":
+				if m.scroll > 0 {
+					m.scroll--
+				}
+			}
+		}
+	case tea.MouseWheelMsg:
+		switch msg.Button {
+		case tea.MouseWheelUp:
+			m.scroll = max(0, m.scroll-3)
+		case tea.MouseWheelDown:
+			m.scroll += 3
 		}
 	}
 	return m, nil
@@ -72,7 +96,20 @@ func (m Model) View() string {
 		}
 	}
 
-	return lipgloss.NewStyle().Padding(1, 2).Render(b.String())
+	content := b.String()
+	lines := strings.Split(content, "\n")
+
+	if m.scroll >= len(lines) {
+		m.scroll = max(0, len(lines)-1)
+	}
+	lines = lines[m.scroll:]
+
+	visibleH := m.height - 4 // border top/bottom + padding top/bottom
+	if visibleH > 0 && len(lines) > visibleH {
+		lines = lines[:visibleH]
+	}
+
+	return styleBox.Width(m.width - 2).Height(m.height - 2).Render(strings.Join(lines, "\n"))
 }
 
 func checkIcon(c github.CheckRun) string {

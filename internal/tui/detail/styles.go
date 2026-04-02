@@ -8,4 +8,8 @@ var (
 	stylePending = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
 	styleDim     = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	styleBold    = lipgloss.NewStyle().Bold(true)
+	styleBox     = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("237")).
+			Padding(1, 2)
 )

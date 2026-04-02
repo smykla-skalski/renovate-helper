@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"charm.land/bubbles/v2/key"
@@ -33,9 +34,15 @@ var (
 	styleReady  = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
 	styleDim    = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 
-	styleStatusBar = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("8")).
-			PaddingTop(1)
+	styleBottomBar = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("8"))
+	styleHelpKey = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("7")).
+			Bold(true)
+	styleHelpDesc = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("8"))
+	styleHelpSep = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("237"))
 )
 
 type Model struct {
@@ -87,11 +94,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		m.list = m.list.SetSize(msg.Width, msg.Height-3)
+		contentH := msg.Height - 1 // 1 line for bottom bar
+		m.list = m.list.SetSize(msg.Width, contentH)
+		m.detail = m.detail.SetSize(msg.Width, contentH)
 		return m, nil
 
 	case tea.KeyMsg:
 		return m.handleKey(msg)
+
+	case tea.MouseWheelMsg:
+		switch m.current {
+		case viewList:
+			var cmd tea.Cmd
+			m.list, cmd = m.list.Update(msg)
+			return m, cmd
+		case viewDetail:
+			var cmd tea.Cmd
+			m.detail, cmd = m.detail.Update(msg)
+			return m, cmd
+		case viewFilter, viewHelp, viewLabel:
+			// no scroll in these views
+		}
 
 	case prsLoadedMsg:
 		m.loading = false
@@ -140,6 +163,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case viewFilter:
 		if key.Matches(msg, keys.Esc) {
+			m.list = m.list.SetFilter("")
 			m.current = viewList
 			return m, nil
 		}
@@ -167,6 +191,10 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, keys.Quit):
 		return m, tea.Quit
 
+	case key.Matches(msg, keys.Esc):
+		m.list = m.list.SetFilter("")
+		return m, nil
+
 	case key.Matches(msg, keys.Help):
 		m.current = viewHelp
 		return m, nil
@@ -182,7 +210,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case key.Matches(msg, keys.Enter):
 		if pr, ok := m.list.Selected(); ok {
-			m.detail = detail.New(pr)
+			m.detail = detail.New(pr).SetSize(m.width, m.height-1)
 			m.current = viewDetail
 		}
 		return m, nil
@@ -307,29 +335,78 @@ func (m Model) View() tea.View {
 		body = m.list.View()
 	}
 
-	status := m.renderStatus()
-	content := lipgloss.JoinVertical(lipgloss.Left, body, status)
+	bottom := m.renderBottomBar()
+	content := lipgloss.JoinVertical(lipgloss.Left, body, bottom)
 	v := tea.NewView(content)
-	v.WindowTitle = "gh-renovate-tracker"
+	v.WindowTitle = fmt.Sprintf("gh-renovate-tracker — %s", m.status)
 	v.AltScreen = true
 	v.MouseMode = tea.MouseModeCellMotion
 	return v
 }
 
-func (m Model) renderStatus() string {
-	var s string
+func helpHint(k, desc string) string {
+	return styleHelpKey.Render(k) + " " + styleHelpDesc.Render(desc)
+}
+
+func (m Model) renderBottomBar() string {
+	sep := styleHelpSep.Render(" · ")
+	var hints []string
+
+	switch m.current {
+	case viewList:
+		hints = []string{
+			helpHint("j/k", "navigate"),
+			helpHint("space", "select"),
+			helpHint("enter", "detail"),
+			helpHint("m/M", "merge"),
+			helpHint("a/A", "approve"),
+			helpHint("/", "filter"),
+			helpHint("s", "sort"),
+			helpHint("g", "group"),
+			helpHint("o", "open"),
+			helpHint("esc", "clear filter"),
+			helpHint("?", "help"),
+			helpHint("q", "quit"),
+		}
+	case viewDetail:
+		hints = []string{
+			helpHint("j/k", "scroll"),
+			helpHint("esc", "back"),
+		}
+	case viewFilter:
+		hints = []string{
+			helpHint("enter", "apply"),
+			helpHint("esc", "cancel"),
+		}
+	case viewLabel:
+		hints = []string{
+			helpHint("enter", "confirm"),
+			helpHint("esc", "cancel"),
+		}
+	case viewHelp:
+		hints = []string{
+			helpHint("any key", "close"),
+		}
+	}
+
+	helpLine := strings.Join(hints, sep)
+
+	var status string
 	switch {
 	case m.confirming:
-		s = lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Bold(true).Render(m.status)
+		status = lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Bold(true).Render(m.status)
 	case m.loading:
-		s = m.spinner.View() + " loading..."
+		status = m.spinner.View() + " loading…"
 	case m.statusErr:
-		s = styleFailed.Render("✗ " + m.status)
+		status = styleFailed.Render("✗ " + m.status)
 	case m.status != "":
-		s = styleReady.Render("✓ " + m.status)
+		status = styleReady.Render("✓ " + m.status)
 	default:
 		ago := time.Since(time.Unix(0, m.lastFetch)).Round(time.Second)
-		s = styleDim.Render(fmt.Sprintf("↻ %s ago", ago))
+		status = styleDim.Render(fmt.Sprintf("↻ %s ago", ago))
 	}
-	return styleStatusBar.Render(s)
+
+	gap := max(2, m.width-lipgloss.Width(helpLine)-lipgloss.Width(status))
+
+	return styleBottomBar.Render(helpLine + strings.Repeat(" ", gap) + status)
 }

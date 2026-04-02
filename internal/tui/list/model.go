@@ -42,6 +42,7 @@ type Model struct {
 	prs      []github.PR
 	filtered []github.PR
 	cursor   int
+	offset   int
 	width    int
 	height   int
 	sort     sortMode
@@ -65,6 +66,9 @@ func (m Model) SetPRs(prs []github.PR) Model {
 	if m.cursor >= len(m.filtered) {
 		m.cursor = max(0, len(m.filtered)-1)
 	}
+	if m.offset > m.cursor {
+		m.offset = m.cursor
+	}
 	return m
 }
 
@@ -73,6 +77,7 @@ func (m Model) SetFilter(f string) Model {
 	m.filtered = applyFilter(m.prs, f)
 	m.sortFiltered()
 	m.cursor = 0
+	m.offset = 0
 	return m
 }
 
@@ -116,17 +121,45 @@ func (m Model) ClearSelected() Model {
 	return m
 }
 
+func (m Model) visibleRows() int {
+	v := m.height - 3 // header + border top/bottom
+	if v < 1 {
+		return 1
+	}
+	return v
+}
+
+func (m Model) moveUp(n int) Model {
+	if len(m.filtered) == 0 {
+		return m
+	}
+	m.cursor = max(0, m.cursor-n)
+	if m.cursor < m.offset {
+		m.offset = m.cursor
+	}
+	return m
+}
+
+func (m Model) moveDown(n int) Model {
+	if len(m.filtered) == 0 {
+		return m
+	}
+	m.cursor = min(len(m.filtered)-1, m.cursor+n)
+	vis := m.visibleRows()
+	if m.cursor >= m.offset+vis {
+		m.offset = m.cursor - vis + 1
+	}
+	return m
+}
+
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
-	if msg, ok := msg.(tea.KeyMsg); ok {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
 		switch {
 		case key.Matches(msg, upKey):
-			if m.cursor > 0 {
-				m.cursor--
-			}
+			m = m.moveUp(1)
 		case key.Matches(msg, downKey):
-			if m.cursor < len(m.filtered)-1 {
-				m.cursor++
-			}
+			m = m.moveDown(1)
 		case key.Matches(msg, selectKey):
 			m.selected[m.cursor] = !m.selected[m.cursor]
 		case key.Matches(msg, sortKey):
@@ -135,6 +168,13 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		case key.Matches(msg, groupKey):
 			m.grouped = !m.grouped
 			m.sortFiltered()
+		}
+	case tea.MouseWheelMsg:
+		switch msg.Button {
+		case tea.MouseWheelUp:
+			m = m.moveUp(3)
+		case tea.MouseWheelDown:
+			m = m.moveDown(3)
 		}
 	}
 	return m, nil
@@ -153,24 +193,19 @@ func (m Model) View() string {
 		return styleDim.Render("no PRs")
 	}
 
+	colRepo, colTitle, colStatus, colChecks := 30, 45, 12, 10
 	header := styleHeader.Render(
-		fmt.Sprintf("%-30s %-45s %-12s %-10s %s",
-			"Repo", "Title", "Status", "Checks", "Age"),
+		"  " +
+			padRight("Repo", colRepo) + " " +
+			padRight("Title", colTitle) + " " +
+			padRight("Status", colStatus) + " " +
+			padRight("Checks", colChecks) + " " +
+			"Age",
 	)
-	sep := styleSeparator.Render(strings.Repeat("─", m.width))
 
-	visible := m.height - 3
-	if visible < 1 {
-		visible = 1
-	}
-	start := 0
-	if m.cursor >= visible {
-		start = m.cursor - visible + 1
-	}
-	end := start + visible
-	if end > len(m.filtered) {
-		end = len(m.filtered)
-	}
+	visible := m.visibleRows()
+	start := m.offset
+	end := min(start+visible, len(m.filtered))
 
 	var rows []string
 	var lastRepo string
@@ -182,15 +217,20 @@ func (m Model) View() string {
 		rows = append(rows, m.renderRow(i))
 	}
 
-	title := styleTitle.Render("gh-renovate-tracker") +
-		styleDim.Render(fmt.Sprintf("  %d PRs", len(m.filtered)))
-
-	return lipgloss.JoinVertical(lipgloss.Left,
-		title,
-		sep,
+	inner := lipgloss.JoinVertical(lipgloss.Left,
 		header,
 		lipgloss.JoinVertical(lipgloss.Left, rows...),
 	)
+	return styleBox.Width(m.width - 2).Height(m.height - 2).Render(inner)
+}
+
+// padRight pads s to width based on visual (rendered) width.
+func padRight(s string, width int) string {
+	vw := lipgloss.Width(s)
+	if vw >= width {
+		return s
+	}
+	return s + strings.Repeat(" ", width-vw)
 }
 
 func (m Model) renderRow(i int) string {
@@ -200,15 +240,20 @@ func (m Model) renderRow(i int) string {
 		sel = "● "
 	}
 
+	colRepo, colTitle, colStatus, colChecks := 30, 45, 12, 10
+
+	repo := truncate(pr.Repo, colRepo-2)
+	title := truncate(pr.Title, colTitle-2)
 	status := prStatus(pr)
 	checks := prChecks(pr)
 	age := prAge(pr.CreatedAt)
 
-	repo := truncate(pr.Repo, 28)
-	title := truncate(pr.Title, 43)
-
-	row := fmt.Sprintf("%s%-30s %-45s %-12s %-10s %s",
-		sel, repo, title, status, checks, age)
+	row := padRight(sel, 2) +
+		padRight(repo, colRepo) + " " +
+		padRight(title, colTitle) + " " +
+		padRight(status, colStatus) + " " +
+		padRight(checks, colChecks) + " " +
+		age
 
 	if i == m.cursor {
 		return styleSelected.Render(row)
@@ -271,10 +316,11 @@ func prAge(t time.Time) string {
 }
 
 func truncate(s string, n int) string {
-	if len(s) <= n {
+	r := []rune(s)
+	if len(r) <= n {
 		return s
 	}
-	return s[:n-1] + "…"
+	return string(r[:n-1]) + "…"
 }
 
 func applyFilter(prs []github.PR, f string) []github.PR {

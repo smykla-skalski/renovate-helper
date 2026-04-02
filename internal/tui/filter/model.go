@@ -19,7 +19,7 @@ func New() Model {
 }
 
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
-	if msg, ok := msg.(tea.KeyMsg); ok && msg.String() == "enter" {
+	if msg, ok := msg.(tea.KeyPressMsg); ok && msg.Key().Code == tea.KeyEnter {
 		m.done = true
 		return m, nil
 	}
