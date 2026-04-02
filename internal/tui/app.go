@@ -153,6 +153,9 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	switch m.current {
 	case viewDetail:
+		if key.Matches(msg, keys.Quit) {
+			return m, tea.Quit
+		}
 		if key.Matches(msg, keys.Esc) {
 			m.current = viewList
 			return m, nil
