@@ -1,6 +1,8 @@
 package github
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -24,7 +26,8 @@ const (
 )
 
 type Client struct {
-	gql *gogh.GraphQLClient
+	gql  *gogh.GraphQLClient
+	rest *gogh.RESTClient
 }
 
 func NewClient() (*Client, error) {
@@ -32,7 +35,11 @@ func NewClient() (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Client{gql: gql}, nil
+	rest, err := gogh.DefaultRESTClient()
+	if err != nil {
+		return nil, err
+	}
+	return &Client{gql: gql, rest: rest}, nil
 }
 
 func (c *Client) FetchPRs(cfg *config.Config) ([]PR, error) {
@@ -117,6 +124,18 @@ func (c *Client) RerunChecks(repoOwner, repoName string, suiteIDs []string) erro
 		}
 	}
 	return nil
+}
+
+func (c *Client) AddLabel(owner, repo string, number int, label string) error {
+	path := fmt.Sprintf("repos/%s/%s/issues/%d/labels", owner, repo, number)
+	payload := struct {
+		Labels []string `json:"labels"`
+	}{Labels: []string{label}}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	return c.rest.Post(path, bytes.NewReader(body), nil)
 }
 
 func (c *Client) fetchRepoID(owner, name string) (string, error) {

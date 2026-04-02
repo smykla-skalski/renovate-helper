@@ -61,7 +61,7 @@ func (m Model) SetSize(w, h int) Model {
 func (m Model) SetPRs(prs []github.PR) Model {
 	m.prs = prs
 	m.filtered = applyFilter(prs, m.filter)
-	sortPRs(m.filtered, m.sort)
+	m.sortFiltered()
 	if m.cursor >= len(m.filtered) {
 		m.cursor = max(0, len(m.filtered)-1)
 	}
@@ -71,9 +71,27 @@ func (m Model) SetPRs(prs []github.PR) Model {
 func (m Model) SetFilter(f string) Model {
 	m.filter = f
 	m.filtered = applyFilter(m.prs, f)
-	sortPRs(m.filtered, m.sort)
+	m.sortFiltered()
 	m.cursor = 0
 	return m
+}
+
+func (m Model) sortFiltered() {
+	if m.grouped {
+		// Primary sort by repo, secondary by current sort mode.
+		sortPRs(m.filtered, m.sort)
+		stableSortByRepo(m.filtered)
+	} else {
+		sortPRs(m.filtered, m.sort)
+	}
+}
+
+func stableSortByRepo(prs []github.PR) {
+	for i := 1; i < len(prs); i++ {
+		for j := i; j > 0 && prs[j].Repo < prs[j-1].Repo; j-- {
+			prs[j], prs[j-1] = prs[j-1], prs[j]
+		}
+	}
 }
 
 func (m Model) Selected() (github.PR, bool) {
@@ -81,6 +99,21 @@ func (m Model) Selected() (github.PR, bool) {
 		return github.PR{}, false
 	}
 	return m.filtered[m.cursor], true
+}
+
+func (m Model) SelectedPRs() []github.PR {
+	var prs []github.PR
+	for i, sel := range m.selected {
+		if sel && i < len(m.filtered) {
+			prs = append(prs, m.filtered[i])
+		}
+	}
+	return prs
+}
+
+func (m Model) ClearSelected() Model {
+	m.selected = make(map[int]bool)
+	return m
 }
 
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
@@ -98,9 +131,10 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			m.selected[m.cursor] = !m.selected[m.cursor]
 		case key.Matches(msg, sortKey):
 			m.sort = (m.sort + 1) % 3
-			sortPRs(m.filtered, m.sort)
+			m.sortFiltered()
 		case key.Matches(msg, groupKey):
 			m.grouped = !m.grouped
+			m.sortFiltered()
 		}
 	}
 	return m, nil
@@ -139,7 +173,12 @@ func (m Model) View() string {
 	}
 
 	var rows []string
+	var lastRepo string
 	for i := start; i < end; i++ {
+		if m.grouped && m.filtered[i].Repo != lastRepo {
+			lastRepo = m.filtered[i].Repo
+			rows = append(rows, styleHeader.Render(lastRepo))
+		}
 		rows = append(rows, m.renderRow(i))
 	}
 

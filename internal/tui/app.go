@@ -6,6 +6,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/spinner"
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
@@ -24,6 +25,7 @@ const (
 	viewDetail
 	viewFilter
 	viewHelp
+	viewLabel
 )
 
 var (
@@ -37,20 +39,24 @@ var (
 )
 
 type Model struct {
-	help      help.Model
-	lastFetch time.Time
-	client    *github.Client
-	cfg       *config.Config
-	status    string
-	spinner   spinner.Model
-	filter    filter.Model
-	detail    detail.Model
-	list      list.Model
-	width     int
-	height    int
-	current   view
-	loading   bool
-	statusErr bool
+	help       help.Model
+	cfg        *config.Config
+	pendingCmd tea.Cmd
+	client     *github.Client
+	status     string
+	labelInput textinput.Model
+	spinner    spinner.Model
+	filter     filter.Model
+	labelPR    github.PR
+	detail     detail.Model
+	list       list.Model
+	lastFetch  int64
+	width      int
+	height     int
+	current    view
+	loading    bool
+	statusErr  bool
+	confirming bool
 }
 
 func New(client *github.Client, cfg *config.Config) Model {
@@ -90,7 +96,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case prsLoadedMsg:
 		m.loading = false
-		m.lastFetch = time.Now()
+		m.lastFetch = time.Now().UnixNano()
 		m.list = m.list.SetPRs(msg.prs)
 		m.status = fmt.Sprintf("%d PRs", len(msg.prs))
 		return m, tea.Every(m.cfg.RefreshInterval, func(t time.Time) tea.Msg {
@@ -118,6 +124,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Confirmation prompt intercepts all keys.
+	if m.confirming {
+		return m.handleConfirm(msg)
+	}
+
 	switch m.current {
 	case viewDetail:
 		if key.Matches(msg, keys.Esc) {
@@ -144,6 +155,9 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case viewHelp:
 		m.current = viewList
 		return m, nil
+
+	case viewLabel:
+		return m.handleLabelInput(msg)
 
 	case viewList:
 		// handled below
@@ -182,9 +196,22 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case key.Matches(msg, keys.Merge):
 		if pr, ok := m.list.Selected(); ok {
-			return m, mergePRCmd(m.client, pr, m.cfg.MergeMethod)
+			return m.startConfirm(
+				fmt.Sprintf("Merge %s#%d? (y/n)", pr.Repo, pr.Number),
+				mergePRCmd(m.client, pr, m.cfg.MergeMethod),
+			), nil
 		}
 		return m, nil
+
+	case key.Matches(msg, keys.MergeAll):
+		prs := m.list.SelectedPRs()
+		if len(prs) == 0 {
+			return m, nil
+		}
+		return m.startConfirm(
+			fmt.Sprintf("Merge %d PRs? (y/n)", len(prs)),
+			batchMergeCmd(m.client, prs, m.cfg.MergeMethod),
+		), nil
 
 	case key.Matches(msg, keys.Approve):
 		if pr, ok := m.list.Selected(); ok {
@@ -192,9 +219,28 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case key.Matches(msg, keys.ApproveAll):
+		prs := m.list.SelectedPRs()
+		if len(prs) == 0 {
+			return m, nil
+		}
+		return m, batchApproveCmd(m.client, prs)
+
 	case key.Matches(msg, keys.Rerun):
 		if pr, ok := m.list.Selected(); ok {
 			return m, rerunChecksCmd(m.client, pr)
+		}
+		return m, nil
+
+	case key.Matches(msg, keys.Label):
+		if pr, ok := m.list.Selected(); ok {
+			ti := textinput.New()
+			ti.Placeholder = "label name..."
+			ti.Focus()
+			m.labelInput = ti
+			m.labelPR = pr
+			m.current = viewLabel
+			return m, ti.Cursor.BlinkCmd()
 		}
 		return m, nil
 
@@ -203,6 +249,48 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.list, cmd = m.list.Update(msg)
 		return m, cmd
 	}
+}
+
+func (m Model) startConfirm(msg string, cmd tea.Cmd) Model {
+	m.confirming = true
+	m.status = msg
+	m.pendingCmd = cmd
+	return m
+}
+
+func (m Model) handleConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "y", "Y":
+		cmd := m.pendingCmd
+		m.confirming = false
+		m.pendingCmd = nil
+		m.status = ""
+		return m, cmd
+	default:
+		m.confirming = false
+		m.pendingCmd = nil
+		m.status = "cancelled"
+		return m, nil
+	}
+}
+
+func (m Model) handleLabelInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if key.Matches(msg, keys.Esc) {
+		m.current = viewList
+		return m, nil
+	}
+	if msg.String() == "enter" {
+		label := m.labelInput.Value()
+		if label != "" {
+			m.current = viewList
+			return m, addLabelCmd(m.client, m.labelPR, label)
+		}
+		m.current = viewList
+		return m, nil
+	}
+	var cmd tea.Cmd
+	m.labelInput, cmd = m.labelInput.Update(msg)
+	return m, cmd
 }
 
 func (m Model) View() string {
@@ -214,6 +302,8 @@ func (m Model) View() string {
 		body = m.list.View() + "\n" + m.filter.View()
 	case viewHelp:
 		body = m.help.View()
+	case viewLabel:
+		body = m.list.View() + "\n  label: " + m.labelInput.View()
 	case viewList:
 		body = m.list.View()
 	}
@@ -225,6 +315,8 @@ func (m Model) View() string {
 func (m Model) renderStatus() string {
 	var s string
 	switch {
+	case m.confirming:
+		s = lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Bold(true).Render(m.status)
 	case m.loading:
 		s = m.spinner.View() + " loading..."
 	case m.statusErr:
@@ -232,7 +324,7 @@ func (m Model) renderStatus() string {
 	case m.status != "":
 		s = styleReady.Render("✓ " + m.status)
 	default:
-		ago := time.Since(m.lastFetch).Round(time.Second)
+		ago := time.Since(time.Unix(0, m.lastFetch)).Round(time.Second)
 		s = styleDim.Render(fmt.Sprintf("↻ %s ago", ago))
 	}
 	return styleStatusBar.Render(s)

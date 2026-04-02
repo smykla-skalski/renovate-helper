@@ -184,35 +184,38 @@ Text input filtering by repo name, PR title, or status.
 
 ## Implementation Phases
 
-### Phase 1: Skeleton + Config + API
+### Phase 1: Skeleton + Config + API ✅
 - `go mod init`, deps: `go-gh/v2`, `yaml.v3`
 - Config loading with defaults
 - GraphQL client, `FetchPRs()` returning `[]PR`
 - CLI: `go run main.go` prints PRs to stdout as validation
 
-### Phase 2: TUI List View
+### Phase 2: TUI List View ✅
 - Add deps: `bubbletea`, `bubbles`, `lipgloss`
 - Root model with list sub-model
 - Table rendering with color-coded status
 - j/k navigation, status bar, auto-refresh via `tea.Tick`
 
-### Phase 3: Actions
-- Merge, approve, rerun checks, add label mutations
-- Inline confirmation for destructive actions (merge)
-- Status bar feedback ("Merged kumahq/kuma#1234")
-- Auto-refresh after mutation
+### Phase 3: Actions ✅
+- ✅ Merge, approve, rerun checks mutations
+- ✅ Status bar feedback ("Merged kumahq/kuma#1234")
+- ✅ Auto-refresh after mutation
+- ✅ Inline confirmation for destructive actions (merge, batch merge)
+- ✅ Add label via REST API + text input overlay
 
-### Phase 4: Detail + Multi-select + Batch
-- Detail view showing checks, reviews, labels
-- Space to multi-select, M/A for batch merge/approve
-- Filter overlay with text input
-- Help overlay
+### Phase 4: Detail + Multi-select + Batch ✅
+- ✅ Detail view showing checks, reviews, labels
+- ✅ Filter overlay with text input
+- ✅ Help overlay
+- ✅ Space to multi-select, SelectedPRs(), ClearSelected()
+- ✅ M batch merge (with confirmation), A batch approve
+- ✅ Group-by-repo rendering with repo headers
 
-### Phase 5: Polish + Release
-- `o` to open in browser
-- Sort/group toggles
-- `.goreleaser.yml` + `release.yml` workflow
-- README with install instructions
+### Phase 5: Polish + Release ✅
+- ✅ `o` to open in browser
+- ✅ Sort toggles
+- ✅ `.goreleaser.yml` + `release.yml` workflow
+- ⬜ README with install instructions
 
 ## Dependencies (5 direct)
 
