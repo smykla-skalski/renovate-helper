@@ -10,7 +10,6 @@ linters:
     - unused
     - gocritic
     - revive
-    - gofumpt
     - nolintlint
     - nilaway
     - bodyclose
@@ -40,8 +39,6 @@ linters:
     - whitespace
 
   settings:
-    gofumpt:
-      extra-rules: true
     govet:
       enable-all: true
     revive:
@@ -65,17 +62,18 @@ linters:
     nolintlint:
       require-explanation: true
       require-specific: true
-    nilaway:
-      include-pkgs:
-        - github.com/klaudiush/gh-renovate-tracker/...
 
-issues:
-  max-issues-per-linter: 0
-  max-same-issues: 0
-  exclusions:
-    rules:
-      - path: _test\.go
-        linters:
-          - forcetypeassert
-          - unparam
-          - gocritic
+formatters:
+  enable:
+    - gofumpt
+  settings:
+    gofumpt:
+      extra-rules: true
+
+exclusions:
+  rules:
+    - path: _test\.go
+      linters:
+        - forcetypeassert
+        - unparam
+        - gocritic
