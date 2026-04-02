@@ -9,17 +9,19 @@ import (
 	"github.com/klaudiush/gh-renovate-tracker/internal/github"
 )
 
+const clipInput = "hello"
+
 // --- clip ---
 
 func TestClip_Short(t *testing.T) {
-	if got := clip("hello", 10); got != "hello" {
-		t.Errorf("clip short = %q, want %q", got, "hello")
+	if got := clip(clipInput, 10); got != clipInput {
+		t.Errorf("clip short = %q, want %q", got, clipInput)
 	}
 }
 
 func TestClip_Exact(t *testing.T) {
-	if got := clip("hello", 5); got != "hello" {
-		t.Errorf("clip exact = %q, want %q", got, "hello")
+	if got := clip(clipInput, 5); got != clipInput {
+		t.Errorf("clip exact = %q, want %q", got, clipInput)
 	}
 }
 
@@ -35,7 +37,7 @@ func TestClip_Truncated(t *testing.T) {
 }
 
 func TestClip_ZeroWidth(t *testing.T) {
-	if got := clip("hello", 0); got != "hello" {
+	if got := clip(clipInput, 0); got != clipInput {
 		t.Errorf("clip zero width = %q, want original", got)
 	}
 }

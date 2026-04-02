@@ -77,7 +77,7 @@ func (m Model) View() string {
 	fmt.Fprintf(&b, "\n%s\n\n", divider)
 
 	// Metadata
-	keyW := 13 // "%-11s  " = 11 + 2
+	keyW := 13
 	meta := func(key, val string) {
 		fmt.Fprintf(&b, "%s  %s\n", styleKey.Render(fmt.Sprintf("%-11s", key)), val)
 	}
