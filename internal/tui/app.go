@@ -151,6 +151,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.status = "fix-ci done: " + msg.dir
 		m.statusErr = false
+		if repo, _, ok := strings.Cut(msg.prKey, "#"); ok {
+			return m, fetchRepoPRsCmd(m.client, m.cfg, repo)
+		}
 		return m, fetchPRsCmd(m.client, m.cfg)
 
 	case clipboardDoneMsg:
@@ -159,16 +162,42 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.statusUntil = time.Now().Add(3 * time.Second)
 		return m, nil
 
+	case repoPRsLoadedMsg:
+		m.loading = false
+		existing := m.list.AllPRs()
+		merged := make([]github.PR, 0, len(existing))
+		for i := range existing {
+			if existing[i].Repo != msg.repo {
+				merged = append(merged, existing[i])
+			}
+		}
+		merged = append(merged, msg.prs...)
+		m.list = m.list.SetPRs(merged)
+		if time.Now().After(m.statusUntil) {
+			m.status = fmt.Sprintf("%d PRs", len(merged))
+		}
+		return m, nil
+
 	case autoModeDoneMsg:
 		m.status = fmt.Sprintf("auto: approved %d, merged %d PRs", msg.approved, msg.merged)
 		m.statusErr = false
 		m.statusUntil = time.Now().Add(5 * time.Second)
-		return m, fetchPRsCmd(m.client, m.cfg)
+		if len(msg.repos) > 3 {
+			return m, fetchPRsCmd(m.client, m.cfg)
+		}
+		cmds := make([]tea.Cmd, 0, len(msg.repos))
+		for _, repo := range msg.repos {
+			cmds = append(cmds, fetchRepoPRsCmd(m.client, m.cfg, repo))
+		}
+		return m, tea.Batch(cmds...)
 
 	case actionDoneMsg:
 		m.status = msg.msg
 		m.statusErr = false
-		return m, fetchPRsCmd(m.client, m.cfg)
+		if msg.repo == "" {
+			return m, fetchPRsCmd(m.client, m.cfg)
+		}
+		return m, fetchRepoPRsCmd(m.client, m.cfg, msg.repo)
 
 	case errMsg:
 		m.loading = false

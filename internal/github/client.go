@@ -79,6 +79,29 @@ func (c *Client) FetchPRs(cfg *config.Config) ([]PR, error) {
 	return prs, nil
 }
 
+func (c *Client) FetchRepoPRs(repo string, cfg *config.Config) ([]PR, error) {
+	slog.Debug("fetching PRs for repo", "repo", repo)
+	q := fmt.Sprintf("repo:%s author:%s is:pr is:open", repo, cfg.Author)
+	query := fmt.Sprintf("query {\n  repo0: search(query: %q, type: ISSUE, first: 100) { ...prFields }\n}\n%s", q, prFragment)
+
+	var result map[string]searchResult
+	if err := c.gql.Do(query, nil, &result); err != nil {
+		slog.Error("graphql repo fetch failed", "repo", repo, "error", err)
+		return nil, err
+	}
+
+	res, ok := result["repo0"]
+	if !ok {
+		return nil, nil
+	}
+	prs := make([]PR, 0, len(res.Nodes))
+	for i := range res.Nodes {
+		prs = append(prs, convertNode(&res.Nodes[i]))
+	}
+	slog.Info("fetched repo PRs", "repo", repo, "count", len(prs))
+	return prs, nil
+}
+
 func buildSearchQuery(cfg *config.Config) (query string, aliases []string) {
 	var sb strings.Builder
 	sb.WriteString("query {\n")

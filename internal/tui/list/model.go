@@ -72,6 +72,10 @@ func (m Model) SetSize(w, h int) Model {
 	return m
 }
 
+func (m Model) AllPRs() []github.PR {
+	return m.prs
+}
+
 func (m Model) SetPRs(prs []github.PR) Model {
 	m.prs = prs
 	m.filtered = applyFilter(prs, m.filter)

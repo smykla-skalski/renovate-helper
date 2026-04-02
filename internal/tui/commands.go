@@ -19,9 +19,12 @@ import (
 )
 
 type (
-	prsLoadedMsg     struct{ prs []github.PR }
-	errMsg           struct{ err error }
-	actionDoneMsg    struct{ msg string }
+	prsLoadedMsg  struct{ prs []github.PR }
+	errMsg        struct{ err error }
+	actionDoneMsg struct {
+		msg  string
+		repo string
+	}
 	batchProgressMsg struct {
 		ch    <-chan tea.Msg
 		cur   string // e.g. "owner/repo#123"
@@ -40,7 +43,12 @@ type (
 		prKey string
 	}
 	clipboardDoneMsg struct{ count int }
-	autoModeDoneMsg  struct {
+	repoPRsLoadedMsg struct {
+		repo string
+		prs  []github.PR
+	}
+	autoModeDoneMsg struct {
+		repos    []string
 		approved int
 		merged   int
 	}
@@ -56,12 +64,22 @@ func fetchPRsCmd(client *github.Client, cfg *config.Config) tea.Cmd {
 	}
 }
 
+func fetchRepoPRsCmd(client *github.Client, cfg *config.Config, repo string) tea.Cmd {
+	return func() tea.Msg {
+		prs, err := client.FetchRepoPRs(repo, cfg)
+		if err != nil {
+			return errMsg{err}
+		}
+		return repoPRsLoadedMsg{repo: repo, prs: prs}
+	}
+}
+
 func mergePRCmd(client *github.Client, pr github.PR, method string) tea.Cmd {
 	return func() tea.Msg {
 		if err := client.MergePR(pr.ID, method); err != nil {
 			return errMsg{err}
 		}
-		return actionDoneMsg{msg: "Merged " + pr.Repo + "#" + strconv.Itoa(pr.Number)}
+		return actionDoneMsg{msg: "Merged " + pr.Repo + "#" + strconv.Itoa(pr.Number), repo: pr.Repo}
 	}
 }
 
@@ -70,7 +88,7 @@ func approvePRCmd(client *github.Client, pr github.PR) tea.Cmd {
 		if err := client.ApprovePR(pr.ID); err != nil {
 			return errMsg{err}
 		}
-		return actionDoneMsg{msg: "Approved " + pr.Repo + "#" + strconv.Itoa(pr.Number)}
+		return actionDoneMsg{msg: "Approved " + pr.Repo + "#" + strconv.Itoa(pr.Number), repo: pr.Repo}
 	}
 }
 
@@ -83,7 +101,7 @@ func addLabelCmd(client *github.Client, pr github.PR, label string) tea.Cmd {
 		if err := client.AddLabel(parts[0], parts[1], pr.Number, label); err != nil {
 			return errMsg{err}
 		}
-		return actionDoneMsg{msg: fmt.Sprintf("Added label %q to %s#%d", label, pr.Repo, pr.Number)}
+		return actionDoneMsg{msg: fmt.Sprintf("Added label %q to %s#%d", label, pr.Repo, pr.Number), repo: pr.Repo}
 	}
 }
 
@@ -119,7 +137,11 @@ func runBatch(prs []github.PR, verb string, fn func(github.PR) error, progressCh
 	}
 	past := strings.ToUpper(verb[:1]) + verb[1:] + "d"
 	slog.Info("batch complete", "verb", verb, "count", count)
-	return actionDoneMsg{msg: fmt.Sprintf("%s %d PRs", past, count)}
+	repo := ""
+	if len(prs) > 0 {
+		repo = prs[0].Repo
+	}
+	return actionDoneMsg{msg: fmt.Sprintf("%s %d PRs", past, count), repo: repo}
 }
 
 func listenProgress(ch <-chan tea.Msg) tea.Cmd {
@@ -175,7 +197,18 @@ func autoModeCmd(client *github.Client, toApprove, toMerge []github.PR, method s
 			slog.Info("auto-merged", "pr", allMerge[i].Repo, "num", allMerge[i].Number)
 		}
 
-		return autoModeDoneMsg{approved: len(toApprove), merged: len(allMerge)}
+		seen := make(map[string]bool)
+		for i := range allMerge {
+			seen[allMerge[i].Repo] = true
+		}
+		for i := range toApprove {
+			seen[toApprove[i].Repo] = true
+		}
+		repos := make([]string, 0, len(seen))
+		for r := range seen {
+			repos = append(repos, r)
+		}
+		return autoModeDoneMsg{approved: len(toApprove), merged: len(allMerge), repos: repos}
 	}
 }
 
@@ -196,7 +229,7 @@ func rerunChecksCmd(client *github.Client, pr github.PR) tea.Cmd {
 		if err := client.RerunChecks(parts[0], parts[1], suiteIDs); err != nil {
 			return errMsg{err}
 		}
-		return actionDoneMsg{msg: "Rerun checks for " + pr.Repo + "#" + strconv.Itoa(pr.Number)}
+		return actionDoneMsg{msg: "Rerun checks for " + pr.Repo + "#" + strconv.Itoa(pr.Number), repo: pr.Repo}
 	}
 }
 
