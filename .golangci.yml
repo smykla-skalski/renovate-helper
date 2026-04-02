@@ -69,11 +69,3 @@ formatters:
   settings:
     gofumpt:
       extra-rules: true
-
-exclusions:
-  rules:
-    - path: _test\.go
-      linters:
-        - forcetypeassert
-        - unparam
-        - gocritic
