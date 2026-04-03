@@ -1,4 +1,4 @@
-package list
+package prlist
 
 import "charm.land/lipgloss/v2"
 

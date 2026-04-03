@@ -18,7 +18,7 @@ gh-renovate-tracker/
 │       ├── commands.go        # tea.Cmd wrappers for async API calls
 │       ├── keys.go            # Keybinding definitions
 │       ├── browser.go         # Open-in-browser helper
-│       ├── list/model.go      # PR table view (main screen)
+│       ├── prlist/model.go    # PR table view (main screen)
 │       ├── detail/model.go    # Single PR detail view
 │       ├── filter/model.go    # Filter/search overlay
 │       └── help/model.go      # Help overlay
@@ -44,7 +44,7 @@ gh-renovate-tracker/
 
 ```
 tui.Model (app.go)            # Root model, routes messages
-├── list.Model (list/)        # PR table, main screen
+├── prlist.Model (prlist/)    # PR table, main screen
 ├── detail.Model (detail/)    # Single PR detail
 ├── filter.Model (filter/)    # Search overlay
 └── help.Model (help/)        # Help overlay
@@ -57,7 +57,7 @@ tui.Model (app.go)            # Root model, routes messages
 
 ### GitHub API
 
-- Single GraphQL query fetches all PRs using search aliases (one per org/repo)
+- Separate GraphQL query per org/repo to stay within GitHub's resource limits
 - Mutations are separate calls: merge, approve, label, rerun checks
 - Auth inherited from `gh` CLI — requires `gh auth login` first
 - Rate budget: ~15-25 points per refresh at 5min interval

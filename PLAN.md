@@ -24,7 +24,7 @@ gh-renovate-tracker/
 │       ├── commands.go              # tea.Cmd wrappers for all async API calls
 │       ├── keys.go                  # Keybinding definitions
 │       ├── styles.go                # Lipgloss styles
-│       ├── list/
+│       ├── prlist/
 │       │   └── model.go            # PR table view (main screen)
 │       ├── detail/
 │       │   └── model.go            # Single PR detail view
