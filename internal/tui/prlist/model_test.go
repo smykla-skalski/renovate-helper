@@ -5,6 +5,9 @@ import (
 	"testing"
 	"time"
 
+	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
+
 	"github.com/klaudiush/gh-renovate-tracker/internal/github"
 )
 
@@ -110,16 +113,21 @@ func TestSortPRs_ByAge(t *testing.T) {
 	}
 }
 
-func TestTruncate(t *testing.T) {
-	if got := truncate("hello", 10); got != "hello" {
-		t.Errorf("truncate short = %q", got)
+func TestCell_Short(t *testing.T) {
+	got := cell("hello", 10)
+	if w := lipgloss.Width(got); w != 10 {
+		t.Errorf("cell width = %d, want 10", w)
 	}
-	got := truncate("hello world this is long", 10)
-	if len([]rune(got)) > 10 {
-		t.Errorf("truncate did not shorten: %q", got)
+}
+
+func TestCell_Long(t *testing.T) {
+	got := cell("hello world this is long", 10)
+	if w := lipgloss.Width(got); w != 10 {
+		t.Errorf("cell width = %d, want 10", w)
 	}
-	if !strings.HasSuffix(got, "…") {
-		t.Errorf("truncate missing ellipsis: %q", got)
+	stripped := ansi.Strip(got)
+	if len([]rune(stripped)) > 10 {
+		t.Errorf("cell did not truncate: %q", stripped)
 	}
 }
 
