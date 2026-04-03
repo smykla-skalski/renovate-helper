@@ -300,6 +300,33 @@ func centerCell(s string, w int) string {
 	return lipgloss.NewStyle().Width(w).MaxWidth(w).Inline(true).Render(t)
 }
 
+// rowAtY maps a screen Y coordinate to a filtered PR index, accounting for
+// the header line, box top border, and repo group header rows.
+func (m Model) rowAtY(y int) (int, bool) {
+	// y=0 is the column header, y=1 is the box top border.
+	contentY := y - 2
+	if contentY < 0 {
+		return 0, false
+	}
+
+	row := 0
+	var lastRepo string
+	for i := m.offset; i < len(m.filtered); i++ {
+		if m.filtered[i].Repo != lastRepo {
+			lastRepo = m.filtered[i].Repo
+			if row == contentY {
+				return 0, false // clicked a repo group header
+			}
+			row++
+		}
+		if row == contentY {
+			return i, true
+		}
+		row++
+	}
+	return 0, false
+}
+
 func (m Model) moveUp(n int) Model {
 	if len(m.filtered) == 0 {
 		return m
@@ -361,6 +388,12 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			m = m.moveUp(3)
 		case tea.MouseWheelDown:
 			m = m.moveDown(3)
+		}
+	case tea.MouseClickMsg:
+		if msg.Button == tea.MouseLeft {
+			if idx, ok := m.rowAtY(tea.Mouse(msg).Y); ok {
+				m.cursor = idx
+			}
 		}
 	}
 	return m, nil
