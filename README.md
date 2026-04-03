@@ -29,7 +29,7 @@ gh ext install smykla-skalski/gh-renovate-helper
 gh renovate-tracker
 
 # Override with flags
-gh renovate-tracker --orgs kumahq,example-org --repos Kong/kong-mesh --refresh 3m
+gh renovate-tracker --orgs kumahq,example-org --repos other-org/some-repo --refresh 3m
 
 # Non-interactive print mode
 gh renovate-tracker --orgs kumahq --print
@@ -60,7 +60,7 @@ orgs:
   - kumahq
   - example-org
 repos:
-  - Kong/kong-mesh
+  - other-org/some-repo
 exclude_repos:
   - owner/repo-to-skip
 ```
