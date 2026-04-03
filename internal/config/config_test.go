@@ -37,7 +37,7 @@ func TestLoadFromFile(t *testing.T) {
 orgs:
   - kumahq
 repos:
-  - Kong/kong-mesh
+  - kumahq/kuma
 author: dependabot[bot]
 merge_method: merge
 refresh_interval: 10m
@@ -53,8 +53,8 @@ refresh_interval: 10m
 	if len(cfg.Orgs) != 1 || cfg.Orgs[0] != "kumahq" {
 		t.Errorf("Orgs = %v, want [kumahq]", cfg.Orgs)
 	}
-	if len(cfg.Repos) != 1 || cfg.Repos[0] != "Kong/kong-mesh" {
-		t.Errorf("Repos = %v, want [Kong/kong-mesh]", cfg.Repos)
+	if len(cfg.Repos) != 1 || cfg.Repos[0] != "kumahq/kuma" {
+		t.Errorf("Repos = %v, want [kumahq/kuma]", cfg.Repos)
 	}
 	if cfg.Author != "dependabot[bot]" {
 		t.Errorf("Author = %q, want dependabot[bot]", cfg.Author)

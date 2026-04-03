@@ -15,7 +15,7 @@ func TestParsePRRepo(t *testing.T) {
 		wantErr   bool
 	}{
 		{"kumahq/kuma", "kumahq", "kuma", false},
-		{"Kong/kong-mesh", "Kong", "kong-mesh", false},
+		{"kumahq/kuma-website", "kumahq", "kuma-website", false},
 		{"invalid", "", "", true},
 	}
 	for _, tt := range tests {
