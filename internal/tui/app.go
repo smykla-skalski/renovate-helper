@@ -16,7 +16,7 @@ import (
 	"github.com/klaudiush/gh-renovate-tracker/internal/tui/detail"
 	"github.com/klaudiush/gh-renovate-tracker/internal/tui/filter"
 	"github.com/klaudiush/gh-renovate-tracker/internal/tui/help"
-	"github.com/klaudiush/gh-renovate-tracker/internal/tui/list"
+	"github.com/klaudiush/gh-renovate-tracker/internal/tui/prlist"
 )
 
 type view int
@@ -57,7 +57,7 @@ type Model struct {
 	spinner       spinner.Model
 	filter        filter.Model
 	labelPR       github.PR
-	list          list.Model
+	list          prlist.Model
 	detail        detail.Model
 	lastFetch     int64
 	width         int
@@ -77,7 +77,7 @@ func New(client *github.Client, cfg *config.Config) Model {
 		client:  client,
 		cfg:     cfg,
 		current: viewList,
-		list:    list.New(),
+		list:    prlist.New(),
 		filter:  filter.New(),
 		help:    help.New(),
 		spinner: s,

@@ -3,6 +3,7 @@ package github
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -49,8 +50,15 @@ func NewClient() (*Client, error) {
 	return &Client{gql: gql, rest: rest}, nil
 }
 
-func isRateLimited(err error) bool {
-	return err != nil && strings.Contains(strings.ToLower(err.Error()), "rate limit")
+func isRetryable(err error) bool {
+	if err == nil {
+		return false
+	}
+	var httpErr *gogh.HTTPError
+	if errors.As(err, &httpErr) && httpErr.StatusCode >= 500 {
+		return true
+	}
+	return strings.Contains(strings.ToLower(err.Error()), "rate limit")
 }
 
 func (c *Client) doWithRetry(query string, vars map[string]any, result any) error {
@@ -59,14 +67,14 @@ func (c *Client) doWithRetry(query string, vars map[string]any, result any) erro
 		if err == nil {
 			return nil
 		}
-		if !isRateLimited(err) {
+		if !isRetryable(err) {
 			return err
 		}
 		if attempt == retryMaxAttempts-1 {
-			return fmt.Errorf("rate limited after %d retries — wait a few minutes and try again", retryMaxAttempts)
+			return err
 		}
 		delay := min(retryBaseDelay<<uint(attempt), retryMaxDelay)
-		slog.Warn("rate limited, retrying", "attempt", attempt+1, "delay", delay)
+		slog.Warn("retryable error, retrying", "attempt", attempt+1, "delay", delay, "error", err)
 		time.Sleep(delay)
 	}
 	return nil // unreachable
