@@ -219,8 +219,8 @@ func (m Model) columns() (colTitle, colStatus, colChecks, colFixing int) {
 	if m.compact() {
 		colStatus = 3
 	}
-	// 2 (sel) + 4 (separators) + 4 (age) + 4 (box border/padding).
-	fixed := 2 + colStatus + colChecks + colFixing + 4 + 4 + 4
+	// 2 (sel) + 4 (separators) + 3 (age) + 2 (box borders).
+	fixed := 2 + colStatus + colChecks + colFixing + 4 + 3 + 2
 	colTitle = m.width - fixed
 	if colTitle < 20 {
 		colTitle = 20
@@ -317,7 +317,7 @@ func (m Model) View() string {
 			padRight(statusLabel, colStatus) + " " +
 			padRight("Checks", colChecks) + " " +
 			padRight("Fixing", colFixing) + " " +
-			"Age",
+			padRight("Age", 3),
 	)
 
 	visible := m.visibleRows()
@@ -332,7 +332,7 @@ func (m Model) View() string {
 			if rowsUsed+1 >= visible {
 				break
 			}
-			rows = append(rows, styleHeader.Render(lastRepo))
+			rows = append(rows, styleHeader.Render(" "+lastRepo))
 			rowsUsed++
 		}
 		rows = append(rows, m.renderRow(i))
@@ -340,7 +340,7 @@ func (m Model) View() string {
 	}
 
 	body := lipgloss.JoinVertical(lipgloss.Left, rows...)
-	inner := styleBox.Width(m.width - 2).Height(m.height - 1).Render(body)
+	inner := styleBox.Width(m.width).Height(m.height - 1).Render(body)
 	return lipgloss.JoinVertical(lipgloss.Left, header, inner)
 }
 
@@ -377,7 +377,7 @@ func (m Model) renderRow(i int) string {
 		padRight(status, colStatus) + " " +
 		padRight(checks, colChecks) + " " +
 		padRight(fixing, colFixing) + " " +
-		age
+		padRight(age, 3)
 
 	if i == m.cursor {
 		return styleSelected.Render(row)

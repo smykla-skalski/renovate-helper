@@ -189,11 +189,11 @@ func snapshotModel(width, height int) Model {
 func TestView_Snapshot(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	m := snapshotModel(100, 15)
-	golden.RequireEqual(t, ansi.Strip(m.View().Content))
+	golden.RequireEqual(t, ansi.Strip(m.View().Content)+"\n")
 }
 
 func TestView_Narrow_Snapshot(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	m := snapshotModel(60, 15)
-	golden.RequireEqual(t, ansi.Strip(m.View().Content))
+	golden.RequireEqual(t, ansi.Strip(m.View().Content)+"\n")
 }
