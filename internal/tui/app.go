@@ -463,6 +463,8 @@ func (m Model) View() tea.View {
 	}
 
 	bottom := m.renderBottomBar()
+	bodyH := m.height - 1
+	body = lipgloss.NewStyle().Height(bodyH).MaxHeight(bodyH).Render(body)
 	content := lipgloss.JoinVertical(lipgloss.Left, body, bottom)
 
 	switch {
@@ -541,6 +543,20 @@ func (m Model) renderErrorPopup() string {
 		lipgloss.WithWhitespaceChars(" "))
 }
 
+func truncateStyled(hints []string, sep string, maxWidth int) string {
+	ellipsis := styleDim.Render(" …")
+	for n := len(hints); n > 0; n-- {
+		line := strings.Join(hints[:n], sep)
+		if n == len(hints) && lipgloss.Width(line) <= maxWidth {
+			return line
+		}
+		if lipgloss.Width(line)+lipgloss.Width(ellipsis) <= maxWidth {
+			return line + ellipsis
+		}
+	}
+	return styleDim.Render("…")
+}
+
 func helpHint(k, desc string) string {
 	return styleHelpKey.Render(k) + " " + styleHelpDesc.Render(desc)
 }
@@ -584,12 +600,6 @@ func (m Model) renderBottomBar() string {
 
 	helpLine := strings.Join(hints, sep)
 
-	// Truncate hints if they'd push status off screen
-	maxHelp := m.width - 30 // reserve space for status
-	if maxHelp > 0 && lipgloss.Width(helpLine) > maxHelp {
-		helpLine = helpLine[:maxHelp] + styleDim.Render("…")
-	}
-
 	var status string
 	switch {
 	case m.confirming:
@@ -607,6 +617,10 @@ func (m Model) renderBottomBar() string {
 
 	pad := 2
 	innerW := m.width - 2*pad
+	maxHelp := innerW - lipgloss.Width(status) - 2
+	if maxHelp > 0 && lipgloss.Width(helpLine) > maxHelp {
+		helpLine = truncateStyled(hints, sep, maxHelp)
+	}
 	gap := max(2, innerW-lipgloss.Width(helpLine)-lipgloss.Width(status))
 	lr := strings.Repeat(" ", pad)
 

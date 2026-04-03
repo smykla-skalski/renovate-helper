@@ -5,6 +5,8 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
+	"github.com/charmbracelet/x/exp/golden"
 
 	"github.com/klaudiush/gh-renovate-tracker/internal/config"
 	"github.com/klaudiush/gh-renovate-tracker/internal/github"
@@ -164,4 +166,34 @@ func TestRenderStatus_LastFetch(t *testing.T) {
 	if s == "" {
 		t.Error("renderBottomBar should return non-empty with lastFetch")
 	}
+}
+
+const testStatus = "3 PRs"
+
+func snapshotModel(width, height int) Model {
+	now := time.Now()
+	m := newTestModel()
+	m.width = width
+	m.height = height
+	m.list = m.list.SetSize(width, height-1)
+	m.list = m.list.SetPRs([]github.PR{
+		{Repo: "org/repo", Title: "update go", ReviewStatus: "APPROVED", CheckStatus: "SUCCESS", CreatedAt: now.Add(-48 * time.Hour)},
+		{Repo: "org/repo", Title: "update helm", ReviewStatus: "REVIEW_REQUIRED", CreatedAt: now.Add(-72 * time.Hour)},
+		{Repo: "org/other", Title: "bump deps", CheckStatus: "FAILURE", CreatedAt: now.Add(-24 * time.Hour)},
+	})
+	m.lastFetch = now.UnixNano()
+	m.status = testStatus
+	return m
+}
+
+func TestView_Snapshot(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	m := snapshotModel(100, 15)
+	golden.RequireEqual(t, ansi.Strip(m.View().Content)+"\n")
+}
+
+func TestView_Narrow_Snapshot(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	m := snapshotModel(60, 15)
+	golden.RequireEqual(t, ansi.Strip(m.View().Content)+"\n")
 }

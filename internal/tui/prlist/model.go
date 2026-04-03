@@ -201,11 +201,31 @@ func (m Model) ClearSelected() Model {
 }
 
 func (m Model) visibleRows() int {
-	v := m.height - 3 // header + border top/bottom
+	v := m.height - 1 - 2 // header outside box + border top/bottom.
 	if v < 1 {
 		return 1
 	}
 	return v
+}
+
+const compactThreshold = 80
+
+func (m Model) compact() bool {
+	return m.width < compactThreshold
+}
+
+func (m Model) columns() (colTitle, colStatus, colChecks, colFixing int) {
+	colStatus, colChecks, colFixing = 12, 10, 7
+	if m.compact() {
+		colStatus = 3
+	}
+	// 2 (sel) + 4 (separators) + 3 (age) + 2 (box borders).
+	fixed := 2 + colStatus + colChecks + colFixing + 4 + 3 + 2
+	colTitle = m.width - fixed
+	if colTitle < 20 {
+		colTitle = 20
+	}
+	return colTitle, colStatus, colChecks, colFixing
 }
 
 func (m Model) moveUp(n int) Model {
@@ -286,15 +306,18 @@ func (m Model) View() string {
 		return styleDim.Render("no PRs")
 	}
 
-	colRepo, colTitle, colStatus, colChecks, colFixing := 30, 45, 12, 10, 7
+	colTitle, colStatus, colChecks, colFixing := m.columns()
+	statusLabel := "Status"
+	if m.compact() {
+		statusLabel = "St"
+	}
 	header := styleHeader.Render(
 		"  " +
-			padRight("Repo", colRepo) + " " +
 			padRight("Title", colTitle) + " " +
-			padRight("Status", colStatus) + " " +
+			padRight(statusLabel, colStatus) + " " +
 			padRight("Checks", colChecks) + " " +
 			padRight("Fixing", colFixing) + " " +
-			"Age",
+			padRight("Age", 3),
 	)
 
 	visible := m.visibleRows()
@@ -309,18 +332,16 @@ func (m Model) View() string {
 			if rowsUsed+1 >= visible {
 				break
 			}
-			rows = append(rows, styleHeader.Render(lastRepo))
+			rows = append(rows, styleHeader.Render(" "+lastRepo))
 			rowsUsed++
 		}
 		rows = append(rows, m.renderRow(i))
 		rowsUsed++
 	}
 
-	inner := lipgloss.JoinVertical(lipgloss.Left,
-		header,
-		lipgloss.JoinVertical(lipgloss.Left, rows...),
-	)
-	return styleBox.Width(m.width - 2).Height(m.height - 2).Render(inner)
+	body := lipgloss.JoinVertical(lipgloss.Left, rows...)
+	inner := styleBox.Width(m.width).Height(m.height - 1).Render(body)
+	return lipgloss.JoinVertical(lipgloss.Left, header, inner)
 }
 
 // padRight pads s to width based on visual (rendered) width.
@@ -339,11 +360,10 @@ func (m Model) renderRow(i int) string {
 		sel = "● "
 	}
 
-	colRepo, colTitle, colStatus, colChecks, colFixing := 30, 45, 12, 10, 7
+	colTitle, colStatus, colChecks, colFixing := m.columns()
 
-	repo := truncate(pr.Repo, colRepo-2)
 	title := truncate(pr.Title, colTitle-2)
-	status := prStatus(pr)
+	status := prStatus(pr, m.compact())
 	checks := prChecks(pr)
 	prKey := fmt.Sprintf("%s#%d", pr.Repo, pr.Number)
 	fixing := styleDim.Render("-")
@@ -353,12 +373,11 @@ func (m Model) renderRow(i int) string {
 	age := prAge(pr.CreatedAt)
 
 	row := padRight(sel, 2) +
-		padRight(repo, colRepo) + " " +
 		padRight(title, colTitle) + " " +
 		padRight(status, colStatus) + " " +
 		padRight(checks, colChecks) + " " +
 		padRight(fixing, colFixing) + " " +
-		age
+		padRight(age, 3)
 
 	if i == m.cursor {
 		return styleSelected.Render(row)
@@ -366,21 +385,42 @@ func (m Model) renderRow(i int) string {
 	return row
 }
 
-func prStatus(pr github.PR) string {
+func prStatus(pr github.PR, compact bool) string {
 	switch {
 	case pr.Mergeable == mergeConflicting:
+		if compact {
+			return styleConflict.Render("✗")
+		}
 		return styleConflict.Render("✗ Conflict")
 	case pr.CheckStatus == statusFailure:
+		if compact {
+			return styleFailed.Render("✗")
+		}
 		return styleFailed.Render("✗ Checks")
 	case pr.ReviewStatus == reviewChanges:
+		if compact {
+			return styleConflict.Render("✗")
+		}
 		return styleConflict.Render("✗ Changes")
 	case pr.CheckStatus == statusPending:
+		if compact {
+			return stylePending.Render("◐")
+		}
 		return stylePending.Render("◐ Checks")
 	case pr.ReviewStatus == reviewRequired:
+		if compact {
+			return stylePending.Render("◐")
+		}
 		return stylePending.Render("◐ Review")
 	case pr.ReviewStatus == statusApproved && pr.CheckStatus == statusSuccess:
+		if compact {
+			return styleReady.Render("✓")
+		}
 		return styleReady.Render("✓ Ready")
 	default:
+		if compact {
+			return styleDim.Render("~")
+		}
 		return styleDim.Render("~ Pending")
 	}
 }
