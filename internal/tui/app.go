@@ -27,6 +27,7 @@ const (
 	viewFilter
 	viewHelp
 	viewLabel
+	viewError
 )
 
 var (
@@ -114,7 +115,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			var cmd tea.Cmd
 			m.detail, cmd = m.detail.Update(msg)
 			return m, cmd
-		case viewFilter, viewHelp, viewLabel:
+		case viewFilter, viewHelp, viewLabel, viewError:
 			// no scroll in these views
 		}
 
@@ -203,6 +204,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.loading = false
 		m.status = msg.err.Error()
 		m.statusErr = true
+		if len(m.status) > 80 {
+			m.current = viewError
+		}
 		return m, nil
 
 	case spinner.TickMsg:
@@ -248,6 +252,10 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 
 	case viewHelp:
+		m.current = viewList
+		return m, nil
+
+	case viewError:
 		m.current = viewList
 		return m, nil
 
@@ -450,16 +458,19 @@ func (m Model) View() tea.View {
 		body = m.help.View()
 	case viewLabel:
 		body = m.list.View() + "\n  label: " + m.labelInput.View()
-	case viewList:
+	case viewList, viewError:
 		body = m.list.View()
 	}
 
 	bottom := m.renderBottomBar()
 	content := lipgloss.JoinVertical(lipgloss.Left, body, bottom)
 
-	if m.confirming {
+	switch {
+	case m.confirming:
 		content = m.renderPopup()
-	} else if m.loading && m.lastFetch == 0 {
+	case m.current == viewError:
+		content = m.renderErrorPopup()
+	case m.loading && m.lastFetch == 0:
 		content = m.renderLoadingPopup()
 	}
 
@@ -507,6 +518,29 @@ func (m Model) renderPopup() string {
 		lipgloss.WithWhitespaceChars(" "))
 }
 
+func (m Model) renderErrorPopup() string {
+	title := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("1")).Render("Error")
+	hint := styleDim.Render("any key to dismiss")
+
+	boxW := min(m.width-4, 100)
+	innerW := boxW - 8 // padding + border.
+	if innerW < 20 {
+		innerW = 20
+	}
+
+	wrapped := lipgloss.NewStyle().Width(innerW).Render(m.status)
+	inner := lipgloss.JoinVertical(lipgloss.Center, title, "", wrapped, "", hint)
+
+	box := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("1")).
+		Padding(1, 3).
+		Render(inner)
+
+	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box,
+		lipgloss.WithWhitespaceChars(" "))
+}
+
 func helpHint(k, desc string) string {
 	return styleHelpKey.Render(k) + " " + styleHelpDesc.Render(desc)
 }
@@ -542,7 +576,7 @@ func (m Model) renderBottomBar() string {
 			helpHint("enter", "confirm"),
 			helpHint("esc", "cancel"),
 		}
-	case viewHelp:
+	case viewHelp, viewError:
 		hints = []string{
 			helpHint("any key", "close"),
 		}
