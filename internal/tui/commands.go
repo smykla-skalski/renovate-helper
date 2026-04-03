@@ -105,16 +105,21 @@ func addLabelCmd(client *github.Client, pr github.PR, label string) tea.Cmd {
 	}
 }
 
+const batchMaxConcurrency = 3
+
 func runBatch(prs []github.PR, verb string, fn func(github.PR) error, progressCh chan tea.Msg) tea.Msg {
 	slog.Info("batch start", "verb", verb, "count", len(prs))
 	errs := make([]error, len(prs))
 	var done atomic.Int32
 	total := len(prs)
+	sem := make(chan struct{}, batchMaxConcurrency)
 	var wg sync.WaitGroup
 	for i := range prs {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
 			errs[i] = fn(prs[i])
 			n := int(done.Add(1))
 			progressCh <- batchProgressMsg{

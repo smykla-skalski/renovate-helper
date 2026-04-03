@@ -14,6 +14,12 @@ import (
 )
 
 const (
+	retryMaxAttempts = 3
+	retryBaseDelay   = 10 * time.Second
+	retryMaxDelay    = 60 * time.Second
+)
+
+const (
 	statusFailure       = "FAILURE"
 	statusSuccess       = "SUCCESS"
 	statusPending       = "PENDING"
@@ -43,6 +49,29 @@ func NewClient() (*Client, error) {
 	return &Client{gql: gql, rest: rest}, nil
 }
 
+func isRateLimited(err error) bool {
+	return err != nil && strings.Contains(strings.ToLower(err.Error()), "rate limit")
+}
+
+func (c *Client) doWithRetry(query string, vars map[string]any, result any) error {
+	for attempt := range retryMaxAttempts {
+		err := c.gql.Do(query, vars, result)
+		if err == nil {
+			return nil
+		}
+		if !isRateLimited(err) {
+			return err
+		}
+		if attempt == retryMaxAttempts-1 {
+			return fmt.Errorf("rate limited after %d retries — wait a few minutes and try again", retryMaxAttempts)
+		}
+		delay := min(retryBaseDelay<<uint(attempt), retryMaxDelay)
+		slog.Warn("rate limited, retrying", "attempt", attempt+1, "delay", delay)
+		time.Sleep(delay)
+	}
+	return nil // unreachable
+}
+
 func (c *Client) FetchPRs(cfg *config.Config) ([]PR, error) {
 	if len(cfg.Orgs) == 0 && len(cfg.Repos) == 0 {
 		return nil, fmt.Errorf("no orgs or repos configured")
@@ -51,7 +80,7 @@ func (c *Client) FetchPRs(cfg *config.Config) ([]PR, error) {
 	slog.Debug("fetching PRs", "orgs", cfg.Orgs, "repos", cfg.Repos, "author", cfg.Author)
 	query, aliases := buildSearchQuery(cfg)
 	var result map[string]searchResult
-	if err := c.gql.Do(query, nil, &result); err != nil {
+	if err := c.doWithRetry(query, nil, &result); err != nil {
 		slog.Error("graphql fetch failed", "error", err)
 		return nil, err
 	}
@@ -85,7 +114,7 @@ func (c *Client) FetchRepoPRs(repo string, cfg *config.Config) ([]PR, error) {
 	query := fmt.Sprintf("query {\n  repo0: search(query: %q, type: ISSUE, first: 100) { ...prFields }\n}\n%s", q, prFragment)
 
 	var result map[string]searchResult
-	if err := c.gql.Do(query, nil, &result); err != nil {
+	if err := c.doWithRetry(query, nil, &result); err != nil {
 		slog.Error("graphql repo fetch failed", "repo", repo, "error", err)
 		return nil, err
 	}
@@ -128,9 +157,9 @@ func buildSearchQuery(cfg *config.Config) (query string, aliases []string) {
 func (c *Client) MergePR(prID, mergeMethod string) error {
 	method := strings.ToUpper(mergeMethod)
 	slog.Info("merging PR", "id", prID, "method", method)
-	var result map[string]interface{}
-	vars := map[string]interface{}{"id": prID, "method": method}
-	if err := c.gql.Do(mergeMutation, vars, &result); err != nil {
+	var result map[string]any
+	vars := map[string]any{"id": prID, "method": method}
+	if err := c.doWithRetry(mergeMutation, vars, &result); err != nil {
 		slog.Error("merge failed", "id", prID, "error", err)
 		return err
 	}
@@ -140,9 +169,9 @@ func (c *Client) MergePR(prID, mergeMethod string) error {
 
 func (c *Client) ApprovePR(prID string) error {
 	slog.Info("approving PR", "id", prID)
-	var result map[string]interface{}
-	vars := map[string]interface{}{"id": prID}
-	if err := c.gql.Do(approveMutation, vars, &result); err != nil {
+	var result map[string]any
+	vars := map[string]any{"id": prID}
+	if err := c.doWithRetry(approveMutation, vars, &result); err != nil {
 		slog.Error("approve failed", "id", prID, "error", err)
 		return err
 	}
@@ -157,9 +186,9 @@ func (c *Client) RerunChecks(repoOwner, repoName string, suiteIDs []string) erro
 		return err
 	}
 	for _, sid := range suiteIDs {
-		var result map[string]interface{}
-		vars := map[string]interface{}{"checkSuiteId": sid, "repositoryId": repoID}
-		if err := c.gql.Do(rerequestCheckSuiteMutation, vars, &result); err != nil {
+		var result map[string]any
+		vars := map[string]any{"checkSuiteId": sid, "repositoryId": repoID}
+		if err := c.doWithRetry(rerequestCheckSuiteMutation, vars, &result); err != nil {
 			slog.Error("rerun check suite failed", "suite", sid, "error", err)
 			return err
 		}
@@ -183,8 +212,8 @@ func (c *Client) fetchRepoID(owner, name string) (string, error) {
 	var result struct {
 		Repository struct{ ID string }
 	}
-	vars := map[string]interface{}{"owner": owner, "name": name}
-	if err := c.gql.Do(repoIDQuery, vars, &result); err != nil {
+	vars := map[string]any{"owner": owner, "name": name}
+	if err := c.doWithRetry(repoIDQuery, vars, &result); err != nil {
 		return "", err
 	}
 	return result.Repository.ID, nil
