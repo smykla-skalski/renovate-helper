@@ -4,56 +4,30 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/klaudiush/gh-renovate-tracker/internal/config"
 )
 
-func TestBuildSearchQuery_OrgsOnly(t *testing.T) {
-	cfg := &config.Config{
-		Orgs:   []string{"kumahq", "kong"},
-		Author: "renovate[bot]",
-	}
-	query, aliases := buildSearchQuery(cfg)
+func TestBuildSingleSearchQuery_Org(t *testing.T) {
+	query := buildSingleSearchQuery("org:kumahq", "renovate[bot]")
 
-	if len(aliases) != 2 {
-		t.Fatalf("aliases len = %d, want 2", len(aliases))
-	}
-	if aliases[0] != "org0" || aliases[1] != "org1" {
-		t.Errorf("aliases = %v, want [org0 org1]", aliases)
-	}
 	if !strings.Contains(query, "org:kumahq") {
 		t.Error("query missing org:kumahq")
 	}
-	if !strings.Contains(query, "org:kong") {
-		t.Error("query missing org:kong")
+	if !strings.Contains(query, "result: search") {
+		t.Error("query missing result alias")
+	}
+	if !strings.Contains(query, "prFields") {
+		t.Error("query missing prFields fragment")
 	}
 }
 
-func TestBuildSearchQuery_ReposOnly(t *testing.T) {
-	cfg := &config.Config{
-		Repos:  []string{"Kong/kong-mesh"},
-		Author: "renovate[bot]",
-	}
-	_, aliases := buildSearchQuery(cfg)
+func TestBuildSingleSearchQuery_Repo(t *testing.T) {
+	query := buildSingleSearchQuery("repo:kumahq/kuma", "renovate[bot]")
 
-	if len(aliases) != 1 || aliases[0] != "repo0" {
-		t.Errorf("aliases = %v, want [repo0]", aliases)
+	if !strings.Contains(query, "repo:kumahq/kuma") {
+		t.Error("query missing repo:kumahq/kuma")
 	}
-}
-
-func TestBuildSearchQuery_Mixed(t *testing.T) {
-	cfg := &config.Config{
-		Orgs:   []string{"kumahq"},
-		Repos:  []string{"Kong/kong-mesh"},
-		Author: "renovate[bot]",
-	}
-	_, aliases := buildSearchQuery(cfg)
-
-	if len(aliases) != 2 {
-		t.Fatalf("aliases len = %d, want 2", len(aliases))
-	}
-	if aliases[0] != "org0" || aliases[1] != "repo0" {
-		t.Errorf("aliases = %v, want [org0 repo0]", aliases)
+	if !strings.Contains(query, "result: search") {
+		t.Error("query missing result alias")
 	}
 }
 

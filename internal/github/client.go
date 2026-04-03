@@ -78,21 +78,29 @@ func (c *Client) FetchPRs(cfg *config.Config) ([]PR, error) {
 	}
 
 	slog.Debug("fetching PRs", "orgs", cfg.Orgs, "repos", cfg.Repos, "author", cfg.Author)
-	query, aliases := buildSearchQuery(cfg)
-	var result map[string]searchResult
-	if err := c.doWithRetry(query, nil, &result); err != nil {
-		slog.Error("graphql fetch failed", "error", err)
-		return nil, err
-	}
 
 	excluded := make(map[string]bool, len(cfg.ExcludeRepos))
 	for _, r := range cfg.ExcludeRepos {
 		excluded[r] = true
 	}
 
+	var scopes []string
+	for _, org := range cfg.Orgs {
+		scopes = append(scopes, "org:"+org)
+	}
+	for _, repo := range cfg.Repos {
+		scopes = append(scopes, "repo:"+repo)
+	}
+
 	var prs []PR
-	for _, alias := range aliases {
-		res, ok := result[alias]
+	for _, scope := range scopes {
+		query := buildSingleSearchQuery(scope, cfg.Author)
+		var result map[string]searchResult
+		if err := c.doWithRetry(query, nil, &result); err != nil {
+			slog.Error("graphql fetch failed", "scope", scope, "error", err)
+			return nil, err
+		}
+		res, ok := result["result"]
 		if !ok {
 			continue
 		}
@@ -110,8 +118,7 @@ func (c *Client) FetchPRs(cfg *config.Config) ([]PR, error) {
 
 func (c *Client) FetchRepoPRs(repo string, cfg *config.Config) ([]PR, error) {
 	slog.Debug("fetching PRs for repo", "repo", repo)
-	q := fmt.Sprintf("repo:%s author:%s is:pr is:open", repo, cfg.Author)
-	query := fmt.Sprintf("query {\n  repo0: search(query: %q, type: ISSUE, first: 100) { ...prFields }\n}\n%s", q, prFragment)
+	query := buildSingleSearchQuery("repo:"+repo, cfg.Author)
 
 	var result map[string]searchResult
 	if err := c.doWithRetry(query, nil, &result); err != nil {
@@ -119,7 +126,7 @@ func (c *Client) FetchRepoPRs(repo string, cfg *config.Config) ([]PR, error) {
 		return nil, err
 	}
 
-	res, ok := result["repo0"]
+	res, ok := result["result"]
 	if !ok {
 		return nil, nil
 	}
@@ -131,27 +138,9 @@ func (c *Client) FetchRepoPRs(repo string, cfg *config.Config) ([]PR, error) {
 	return prs, nil
 }
 
-func buildSearchQuery(cfg *config.Config) (query string, aliases []string) {
-	var sb strings.Builder
-	sb.WriteString("query {\n")
-
-	for i, org := range cfg.Orgs {
-		alias := fmt.Sprintf("org%d", i)
-		aliases = append(aliases, alias)
-		q := fmt.Sprintf("org:%s author:%s is:pr is:open", org, cfg.Author)
-		fmt.Fprintf(&sb, "  %s: search(query: %q, type: ISSUE, first: 100) { ...prFields }\n", alias, q)
-	}
-	for i, repo := range cfg.Repos {
-		alias := fmt.Sprintf("repo%d", i)
-		aliases = append(aliases, alias)
-		q := fmt.Sprintf("repo:%s author:%s is:pr is:open", repo, cfg.Author)
-		fmt.Fprintf(&sb, "  %s: search(query: %q, type: ISSUE, first: 100) { ...prFields }\n", alias, q)
-	}
-
-	sb.WriteString("}\n")
-	sb.WriteString(prFragment)
-	query = sb.String()
-	return query, aliases
+func buildSingleSearchQuery(scope, author string) string {
+	q := fmt.Sprintf("%s author:%s is:pr is:open", scope, author)
+	return fmt.Sprintf("query {\n  result: search(query: %q, type: ISSUE, first: 100) { ...prFields }\n}\n%s", q, prFragment)
 }
 
 func (c *Client) MergePR(prID, mergeMethod string) error {
