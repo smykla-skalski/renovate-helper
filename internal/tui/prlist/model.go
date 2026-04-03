@@ -201,7 +201,7 @@ func (m Model) ClearSelected() Model {
 }
 
 func (m Model) visibleRows() int {
-	v := m.height - 4 // header + border top/bottom + header outside box
+	v := m.height - 1 - 2 // header outside box + border top/bottom.
 	if v < 1 {
 		return 1
 	}
@@ -340,7 +340,7 @@ func (m Model) View() string {
 	}
 
 	body := lipgloss.JoinVertical(lipgloss.Left, rows...)
-	inner := styleBox.Width(m.width - 2).Height(m.height - 3).Render(body)
+	inner := styleBox.Width(m.width - 2).Height(m.height - 1).Render(body)
 	return lipgloss.JoinVertical(lipgloss.Left, header, inner)
 }
 
