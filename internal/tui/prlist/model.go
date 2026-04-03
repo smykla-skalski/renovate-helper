@@ -201,11 +201,22 @@ func (m Model) ClearSelected() Model {
 }
 
 func (m Model) visibleRows() int {
-	v := m.height - 3 // header + border top/bottom
+	v := m.height - 4 // header + border top/bottom + header outside box
 	if v < 1 {
 		return 1
 	}
 	return v
+}
+
+func (m Model) titleWidth() int {
+	colStatus, colChecks, colFixing := 12, 10, 7
+	// 2 (sel) + colStatus + colChecks + colFixing + 4 (separators) + 4 (age) + 4 (box border/padding).
+	fixed := 2 + colStatus + colChecks + colFixing + 4 + 4 + 4
+	w := m.width - fixed
+	if w < 20 {
+		return 20
+	}
+	return w
 }
 
 func (m Model) moveUp(n int) Model {
@@ -286,10 +297,9 @@ func (m Model) View() string {
 		return styleDim.Render("no PRs")
 	}
 
-	colRepo, colTitle, colStatus, colChecks, colFixing := 30, 45, 12, 10, 7
+	colTitle, colStatus, colChecks, colFixing := m.titleWidth(), 12, 10, 7
 	header := styleHeader.Render(
 		"  " +
-			padRight("Repo", colRepo) + " " +
 			padRight("Title", colTitle) + " " +
 			padRight("Status", colStatus) + " " +
 			padRight("Checks", colChecks) + " " +
@@ -316,11 +326,9 @@ func (m Model) View() string {
 		rowsUsed++
 	}
 
-	inner := lipgloss.JoinVertical(lipgloss.Left,
-		header,
-		lipgloss.JoinVertical(lipgloss.Left, rows...),
-	)
-	return styleBox.Width(m.width - 2).Height(m.height - 2).Render(inner)
+	body := lipgloss.JoinVertical(lipgloss.Left, rows...)
+	inner := styleBox.Width(m.width - 2).Height(m.height - 3).Render(body)
+	return lipgloss.JoinVertical(lipgloss.Left, header, inner)
 }
 
 // padRight pads s to width based on visual (rendered) width.
@@ -339,9 +347,8 @@ func (m Model) renderRow(i int) string {
 		sel = "● "
 	}
 
-	colRepo, colTitle, colStatus, colChecks, colFixing := 30, 45, 12, 10, 7
+	colTitle, colStatus, colChecks, colFixing := m.titleWidth(), 12, 10, 7
 
-	repo := truncate(pr.Repo, colRepo-2)
 	title := truncate(pr.Title, colTitle-2)
 	status := prStatus(pr)
 	checks := prChecks(pr)
@@ -353,7 +360,6 @@ func (m Model) renderRow(i int) string {
 	age := prAge(pr.CreatedAt)
 
 	row := padRight(sel, 2) +
-		padRight(repo, colRepo) + " " +
 		padRight(title, colTitle) + " " +
 		padRight(status, colStatus) + " " +
 		padRight(checks, colChecks) + " " +
