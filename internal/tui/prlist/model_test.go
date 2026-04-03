@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/exp/golden"
 
 	"github.com/klaudiush/gh-renovate-tracker/internal/github"
@@ -272,27 +273,41 @@ func daysAgo(n int) time.Time {
 	return time.Now().Add(-time.Duration(n) * 24 * time.Hour)
 }
 
-func TestView_Snapshot(t *testing.T) {
-	t.Setenv("NO_COLOR", "1")
-	m := New().SetSize(100, 15).SetPRs([]github.PR{
+func testPRs() []github.PR {
+	return []github.PR{
 		{Repo: "kumahq/kuma", Title: "chore(deps): bump go to 1.25", ReviewStatus: "APPROVED", CheckStatus: "SUCCESS", CreatedAt: daysAgo(2)},
 		{Repo: "kumahq/kuma", Title: "chore(deps): bump helm chart", ReviewStatus: "REVIEW_REQUIRED", CheckStatus: "PENDING", CreatedAt: daysAgo(5)},
 		{Repo: "kumahq/kuma-website", Title: "fix(deps): update gatsby", CheckStatus: "FAILURE", Mergeable: "CONFLICTING", CreatedAt: daysAgo(3)},
-	})
+	}
+}
+
+func TestView_Snapshot(t *testing.T) {
+	m := New().SetSize(100, 15).SetPRs(testPRs())
 	golden.RequireEqual(t, m.View())
+}
+
+func TestView_Plain_Snapshot(t *testing.T) {
+	m := New().SetSize(100, 15).SetPRs(testPRs())
+	golden.RequireEqual(t, ansi.Strip(m.View()))
 }
 
 func TestView_Empty_Snapshot(t *testing.T) {
-	t.Setenv("NO_COLOR", "1")
 	m := New().SetSize(100, 15)
-	golden.RequireEqual(t, m.View())
+	golden.RequireEqual(t, ansi.Strip(m.View()))
 }
 
 func TestView_Narrow_Snapshot(t *testing.T) {
-	t.Setenv("NO_COLOR", "1")
 	m := New().SetSize(60, 15).SetPRs([]github.PR{
 		{Repo: "kumahq/kuma", Title: "chore(deps): bump go to 1.25", ReviewStatus: "APPROVED", CheckStatus: "SUCCESS", CreatedAt: daysAgo(1)},
 		{Repo: "kumahq/kuma", Title: "chore(deps): bump helm chart to v3.14.0", ReviewStatus: "REVIEW_REQUIRED", CreatedAt: daysAgo(7)},
 	})
 	golden.RequireEqual(t, m.View())
+}
+
+func TestView_Narrow_Plain_Snapshot(t *testing.T) {
+	m := New().SetSize(60, 15).SetPRs([]github.PR{
+		{Repo: "kumahq/kuma", Title: "chore(deps): bump go to 1.25", ReviewStatus: "APPROVED", CheckStatus: "SUCCESS", CreatedAt: daysAgo(1)},
+		{Repo: "kumahq/kuma", Title: "chore(deps): bump helm chart to v3.14.0", ReviewStatus: "REVIEW_REQUIRED", CreatedAt: daysAgo(7)},
+	})
+	golden.RequireEqual(t, ansi.Strip(m.View()))
 }

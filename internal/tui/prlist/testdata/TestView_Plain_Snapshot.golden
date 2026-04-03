@@ -1,0 +1,13 @@
+  Title                                                     Status       Checks     Fixing  Age   
+╭────────────────────────────────────────────────────────────────────────────────────────────────╮
+│kumahq/kuma                                                                                     │
+│  chore(deps): bump go to 1.25                              ✓ Ready      -          -       2d  │
+│  chore(deps): bump helm chart                              ◐ Checks     -          -       5d  │
+│kumahq/kuma-website                                                                             │
+│  fix(deps): update gatsby                                  ✗ Conflict   -          -       3d  │
+│                                                                                                │
+│                                                                                                │
+│                                                                                                │
+│                                                                                                │
+│                                                                                                │
+╰────────────────────────────────────────────────────────────────────────────────────────────────╯

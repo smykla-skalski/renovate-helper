@@ -5,6 +5,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/exp/golden"
 
 	"github.com/klaudiush/gh-renovate-tracker/internal/config"
@@ -184,4 +185,23 @@ func TestView_FullLayout_Snapshot(t *testing.T) {
 
 	v := m.View()
 	golden.RequireEqual(t, v.Content)
+}
+
+func TestView_FullLayout_Plain_Snapshot(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	now := time.Now()
+	m := newTestModel()
+	m.width = 100
+	m.height = 15
+	m.list = m.list.SetSize(100, 14)
+	m.list = m.list.SetPRs([]github.PR{
+		{Repo: "org/repo", Title: "update go", ReviewStatus: "APPROVED", CheckStatus: "SUCCESS", CreatedAt: now.Add(-48 * time.Hour)},
+		{Repo: "org/repo", Title: "update helm", ReviewStatus: "REVIEW_REQUIRED", CreatedAt: now.Add(-72 * time.Hour)},
+		{Repo: "org/other", Title: "bump deps", CheckStatus: "FAILURE", CreatedAt: now.Add(-24 * time.Hour)},
+	})
+	m.lastFetch = now.UnixNano()
+	m.status = "3 PRs"
+
+	v := m.View()
+	golden.RequireEqual(t, ansi.Strip(v.Content))
 }
