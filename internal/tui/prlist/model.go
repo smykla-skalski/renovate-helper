@@ -208,15 +208,24 @@ func (m Model) visibleRows() int {
 	return v
 }
 
-func (m Model) titleWidth() int {
-	colStatus, colChecks, colFixing := 12, 10, 7
-	// 2 (sel) + colStatus + colChecks + colFixing + 4 (separators) + 4 (age) + 4 (box border/padding).
-	fixed := 2 + colStatus + colChecks + colFixing + 4 + 4 + 4
-	w := m.width - fixed
-	if w < 20 {
-		return 20
+const compactThreshold = 80
+
+func (m Model) compact() bool {
+	return m.width < compactThreshold
+}
+
+func (m Model) columns() (colTitle, colStatus, colChecks, colFixing int) {
+	colStatus, colChecks, colFixing = 12, 10, 7
+	if m.compact() {
+		colStatus = 3
 	}
-	return w
+	// 2 (sel) + 4 (separators) + 4 (age) + 4 (box border/padding).
+	fixed := 2 + colStatus + colChecks + colFixing + 4 + 4 + 4
+	colTitle = m.width - fixed
+	if colTitle < 20 {
+		colTitle = 20
+	}
+	return colTitle, colStatus, colChecks, colFixing
 }
 
 func (m Model) moveUp(n int) Model {
@@ -297,11 +306,15 @@ func (m Model) View() string {
 		return styleDim.Render("no PRs")
 	}
 
-	colTitle, colStatus, colChecks, colFixing := m.titleWidth(), 12, 10, 7
+	colTitle, colStatus, colChecks, colFixing := m.columns()
+	statusLabel := "Status"
+	if m.compact() {
+		statusLabel = "St"
+	}
 	header := styleHeader.Render(
 		"  " +
 			padRight("Title", colTitle) + " " +
-			padRight("Status", colStatus) + " " +
+			padRight(statusLabel, colStatus) + " " +
 			padRight("Checks", colChecks) + " " +
 			padRight("Fixing", colFixing) + " " +
 			"Age",
@@ -347,10 +360,10 @@ func (m Model) renderRow(i int) string {
 		sel = "● "
 	}
 
-	colTitle, colStatus, colChecks, colFixing := m.titleWidth(), 12, 10, 7
+	colTitle, colStatus, colChecks, colFixing := m.columns()
 
 	title := truncate(pr.Title, colTitle-2)
-	status := prStatus(pr)
+	status := prStatus(pr, m.compact())
 	checks := prChecks(pr)
 	prKey := fmt.Sprintf("%s#%d", pr.Repo, pr.Number)
 	fixing := styleDim.Render("-")
@@ -372,21 +385,42 @@ func (m Model) renderRow(i int) string {
 	return row
 }
 
-func prStatus(pr github.PR) string {
+func prStatus(pr github.PR, compact bool) string {
 	switch {
 	case pr.Mergeable == mergeConflicting:
+		if compact {
+			return styleConflict.Render("✗")
+		}
 		return styleConflict.Render("✗ Conflict")
 	case pr.CheckStatus == statusFailure:
+		if compact {
+			return styleFailed.Render("✗")
+		}
 		return styleFailed.Render("✗ Checks")
 	case pr.ReviewStatus == reviewChanges:
+		if compact {
+			return styleConflict.Render("✗")
+		}
 		return styleConflict.Render("✗ Changes")
 	case pr.CheckStatus == statusPending:
+		if compact {
+			return stylePending.Render("◐")
+		}
 		return stylePending.Render("◐ Checks")
 	case pr.ReviewStatus == reviewRequired:
+		if compact {
+			return stylePending.Render("◐")
+		}
 		return stylePending.Render("◐ Review")
 	case pr.ReviewStatus == statusApproved && pr.CheckStatus == statusSuccess:
+		if compact {
+			return styleReady.Render("✓")
+		}
 		return styleReady.Render("✓ Ready")
 	default:
+		if compact {
+			return styleDim.Render("~")
+		}
 		return styleDim.Render("~ Pending")
 	}
 }
