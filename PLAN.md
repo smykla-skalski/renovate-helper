@@ -45,7 +45,7 @@ gh-renovate-tracker/
 orgs:
   - kumahq
 repos:
-  - Kong/kong-mesh          # individual repos outside tracked orgs
+  - other-org/some-repo     # individual repos outside tracked orgs
 author: "renovate[bot]"     # default, configurable for dependabot etc.
 merge_method: squash         # squash | merge | rebase
 refresh_interval: 5m
@@ -97,7 +97,7 @@ query {
   org0: search(query: "org:kumahq author:renovate[bot] is:pr is:open", type: ISSUE, first: 100) {
     ...prFields
   }
-  repo0: search(query: "repo:Kong/kong-mesh author:renovate[bot] is:pr is:open", type: ISSUE, first: 100) {
+  repo0: search(query: "repo:other-org/some-repo author:renovate[bot] is:pr is:open", type: ISSUE, first: 100) {
     ...prFields
   }
 }
@@ -138,7 +138,7 @@ fragment prFields on SearchResultItemConnection {
  kumahq/kuma           fix(deps): update go to..   ✓ Ready  ✓ 12/12  2d
  kumahq/kuma           chore(deps): update helm..  ✗ Conflict ✓ 12/12  5d
  kumahq/kuma-website   fix(deps): update gatsby..  ◐ Review  ✗ 3/8   1d
- Kong/kong-mesh        chore(deps): update proto.. ✓ Ready  ◐ 10/12  3h
+ other-org/some-repo   chore(deps): update proto.. ✓ Ready  ◐ 10/12  3h
 ─────────────────────────────────────────────────────────────────────────
  j/k:navigate  m:merge  a:approve  l:label  r:rerun  /:filter  ?:help
 ```
