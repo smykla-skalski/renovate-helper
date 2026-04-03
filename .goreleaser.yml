@@ -33,5 +33,5 @@ checksum:
 
 release:
   github:
-    owner: klaudiush
-    name: gh-renovate-tracker
+    owner: smykla-skalski
+    name: gh-renovate-helper
