@@ -544,18 +544,17 @@ func (m Model) renderErrorPopup() string {
 }
 
 func truncateStyled(hints []string, sep string, maxWidth int) string {
-	ellipsis := styleDim.Render("…")
-	ellipsisW := lipgloss.Width(ellipsis)
+	ellipsis := styleDim.Render(" …")
 	for n := len(hints); n > 0; n-- {
 		line := strings.Join(hints[:n], sep)
 		if n == len(hints) && lipgloss.Width(line) <= maxWidth {
 			return line
 		}
-		if lipgloss.Width(line)+lipgloss.Width(sep)+ellipsisW <= maxWidth {
-			return line + sep + ellipsis
+		if lipgloss.Width(line)+lipgloss.Width(ellipsis) <= maxWidth {
+			return line + ellipsis
 		}
 	}
-	return ellipsis
+	return styleDim.Render("…")
 }
 
 func helpHint(k, desc string) string {
