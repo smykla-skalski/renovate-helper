@@ -1,10 +1,10 @@
-  Title                         St  Checks     Fixing  Age  
+   Title                                         St ⊘ ⚙ ⏱   
 ╭──────────────────────────────────────────────────────────╮
 │ org/other                                                │
-│  bump deps                     ✗   -          -       1d │
+│  bump deps                                     ✗  - - 1d │
 │ org/repo                                                 │
-│  update go                     ✓   -          -       2d │
-│  update helm                   ◐   -          -       3d │
+│  update go                                     ✓  - - 2d │
+│  update helm                                   ◐  - - 3d │
 │                                                          │
 │                                                          │
 │                                                          │

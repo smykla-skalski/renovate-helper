@@ -8,6 +8,7 @@ import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/klaudiush/gh-renovate-tracker/internal/github"
 )
@@ -214,18 +215,89 @@ func (m Model) compact() bool {
 	return m.width < compactThreshold
 }
 
-func (m Model) columns() (colTitle, colStatus, colChecks, colFixing int) {
-	colStatus, colChecks, colFixing = 12, 10, 7
-	if m.compact() {
-		colStatus = 3
+type cols struct {
+	title  int
+	status int
+	checks int
+	fixing int
+	age    int
+}
+
+const (
+	colSel    = 2 // selection indicator "● " or "  "
+	colBorder = 2 // box left + right border
+	colSeps   = 4 // spaces between title|status|checks|fixing|age
+	colPadR   = 1 // right padding after last column
+)
+
+// columns computes column widths from the actual filtered PR data. Each
+// column is sized to fit its widest value (or its header, whichever is
+// larger). Title gets whatever space remains.
+func (m Model) columns() cols {
+	compact := m.compact()
+
+	// Start with header widths as minimums.
+	statusMin := lipgloss.Width("Status")
+	if compact {
+		statusMin = lipgloss.Width("St")
 	}
-	// 2 (sel) + 4 (separators) + 3 (age) + 2 (box borders).
-	fixed := 2 + colStatus + colChecks + colFixing + 4 + 3 + 2
-	colTitle = m.width - fixed
-	if colTitle < 20 {
-		colTitle = 20
+	c := cols{
+		status: statusMin,
+		checks: 1,
+		fixing: 1,
+		age:    1,
 	}
-	return colTitle, colStatus, colChecks, colFixing
+
+	for i := range m.filtered {
+		pr := m.filtered[i]
+
+		if sw := lipgloss.Width(prStatus(pr, compact)); sw > c.status {
+			c.status = sw
+		}
+		if cw := lipgloss.Width(prChecks(pr)); cw > c.checks {
+			c.checks = cw
+		}
+		if aw := lipgloss.Width(prAge(pr.CreatedAt)); aw > c.age {
+			c.age = aw
+		}
+		prKey := fmt.Sprintf("%s#%d", pr.Repo, pr.Number)
+		if m.fixing[prKey] {
+			if fw := lipgloss.Width("\u26a1"); fw > c.fixing {
+				c.fixing = fw
+			}
+		}
+	}
+
+	fixed := colSel + c.status + c.checks + c.fixing + c.age + colSeps + colPadR + colBorder
+	c.title = m.width - fixed
+	if c.title < 20 {
+		c.title = 20
+	}
+	return c
+}
+
+// cell truncates s to w display columns (with ellipsis if needed) and pads
+// to exactly w columns. ANSI-aware and wide-char-safe.
+func cell(s string, w int) string {
+	return lipgloss.NewStyle().Width(w).MaxWidth(w).Inline(true).
+		Render(ansi.Truncate(s, w, "…"))
+}
+
+// highlightCell renders a cell with the selected row style. Inner ANSI codes
+// are stripped so the highlight background covers the full cell width.
+func highlightCell(s string, w int) string {
+	return styleSelected.Width(w).MaxWidth(w).Inline(true).
+		Render(ansi.Truncate(ansi.Strip(s), w, "…"))
+}
+
+// centerCell renders s horizontally centered within w columns. It uses the
+// same lipgloss wrapping as cell() for consistent ANSI handling.
+func centerCell(s string, w int) string {
+	t := ansi.Truncate(s, w, "…")
+	if sw := lipgloss.Width(t); sw < w {
+		t = strings.Repeat(" ", (w-sw)/2) + t
+	}
+	return lipgloss.NewStyle().Width(w).MaxWidth(w).Inline(true).Render(t)
 }
 
 func (m Model) moveUp(n int) Model {
@@ -306,18 +378,18 @@ func (m Model) View() string {
 		return styleDim.Render("no PRs")
 	}
 
-	colTitle, colStatus, colChecks, colFixing := m.columns()
+	c := m.columns()
 	statusLabel := "Status"
 	if m.compact() {
 		statusLabel = "St"
 	}
 	header := styleHeader.Render(
-		"  " +
-			padRight("Title", colTitle) + " " +
-			padRight(statusLabel, colStatus) + " " +
-			padRight("Checks", colChecks) + " " +
-			padRight("Fixing", colFixing) + " " +
-			padRight("Age", 3),
+		" " + strings.Repeat(" ", colSel) +
+			cell("Title", c.title) + " " +
+			cell(statusLabel, c.status) + " " +
+			centerCell("⊘", c.checks) + " " +
+			centerCell("⚙", c.fixing) + " " +
+			centerCell("⏱", c.age),
 	)
 
 	visible := m.visibleRows()
@@ -344,15 +416,6 @@ func (m Model) View() string {
 	return lipgloss.JoinVertical(lipgloss.Left, header, inner)
 }
 
-// padRight pads s to width based on visual (rendered) width.
-func padRight(s string, width int) string {
-	vw := lipgloss.Width(s)
-	if vw >= width {
-		return s
-	}
-	return s + strings.Repeat(" ", width-vw)
-}
-
 func (m Model) renderRow(i int) string {
 	pr := m.filtered[i]
 	sel := "  "
@@ -360,9 +423,7 @@ func (m Model) renderRow(i int) string {
 		sel = "● "
 	}
 
-	colTitle, colStatus, colChecks, colFixing := m.columns()
-
-	title := truncate(pr.Title, colTitle-2)
+	c := m.columns()
 	status := prStatus(pr, m.compact())
 	checks := prChecks(pr)
 	prKey := fmt.Sprintf("%s#%d", pr.Repo, pr.Number)
@@ -372,17 +433,22 @@ func (m Model) renderRow(i int) string {
 	}
 	age := prAge(pr.CreatedAt)
 
-	row := padRight(sel, 2) +
-		padRight(title, colTitle) + " " +
-		padRight(status, colStatus) + " " +
-		padRight(checks, colChecks) + " " +
-		padRight(fixing, colFixing) + " " +
-		padRight(age, 3)
-
 	if i == m.cursor {
-		return styleSelected.Render(row)
+		sep := styleSelected.Render(" ")
+		return highlightCell(sel, colSel) +
+			highlightCell(pr.Title, c.title) + sep +
+			highlightCell(status, c.status) + sep +
+			highlightCell(checks, c.checks) + sep +
+			highlightCell(fixing, c.fixing) + sep +
+			highlightCell(age, c.age) + styleSelected.Render(" ")
 	}
-	return row
+
+	return cell(sel, colSel) +
+		cell(pr.Title, c.title) + " " +
+		cell(status, c.status) + " " +
+		cell(checks, c.checks) + " " +
+		cell(fixing, c.fixing) + " " +
+		cell(age, c.age) + " "
 }
 
 func prStatus(pr github.PR, compact bool) string {
@@ -458,14 +524,6 @@ func prAge(t time.Time) string {
 	default:
 		return fmt.Sprintf("%dd", int(d.Hours()/24))
 	}
-}
-
-func truncate(s string, n int) string {
-	r := []rune(s)
-	if len(r) <= n {
-		return s
-	}
-	return string(r[:n-1]) + "…"
 }
 
 func applyFilter(prs []github.PR, f string) []github.PR {
