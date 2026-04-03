@@ -19,7 +19,7 @@ Terminal dashboard for tracking and managing Renovate PRs across GitHub organiza
 Requires [GitHub CLI](https://cli.github.com/) (`gh`) with `gh auth login` completed.
 
 ```bash
-gh ext install smykla-skalski/renovate-helper
+gh ext install smykla-skalski/gh-renovate-helper
 ```
 
 ## Usage
