@@ -181,7 +181,7 @@ func (m Model) AutoMergeablePRs() []github.PR {
 	var prs []github.PR
 	for i := range m.filtered {
 		pr := m.filtered[i]
-		if pr.ReviewStatus == statusApproved && pr.CheckStatus == statusSuccess && pr.Mergeable != mergeConflicting {
+		if pr.ReviewStatus == statusApproved && pr.CheckStatus == statusSuccess && pr.Mergeable != mergeConflicting && !pr.StabilityDays {
 			prs = append(prs, pr)
 		}
 	}
@@ -459,6 +459,9 @@ func (m Model) renderRow(i int) string {
 	c := m.columns()
 	status := prStatus(pr, m.compact())
 	checks := prChecks(pr)
+	if pr.StabilityDays {
+		checks += stylePending.Render("⏳")
+	}
 	prKey := fmt.Sprintf("%s#%d", pr.Repo, pr.Number)
 	fixing := styleDim.Render("-")
 	if m.fixing[prKey] {

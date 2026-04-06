@@ -3,22 +3,23 @@ package github
 import "time"
 
 type PR struct {
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
-	URL          string
-	State        string
-	CheckStatus  string
-	ID           string
-	Repo         string
-	Title        string
-	ReviewStatus string
-	Mergeable    string
-	Labels       []string
-	Checks       []CheckRun
-	Reviews      []Review
-	Number       int
-	Additions    int
-	Deletions    int
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+	URL           string
+	State         string
+	CheckStatus   string
+	ID            string
+	Repo          string
+	Title         string
+	ReviewStatus  string
+	Mergeable     string
+	Labels        []string
+	Checks        []CheckRun
+	Reviews       []Review
+	Number        int
+	Additions     int
+	Deletions     int
+	StabilityDays bool
 }
 
 type CheckRun struct {

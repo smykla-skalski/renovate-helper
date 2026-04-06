@@ -116,6 +116,11 @@ func (m Model) View() string {
 		}
 	}
 
+	if pr.StabilityDays {
+		fmt.Fprintf(&b, "\n%s\n\n", divider)
+		fmt.Fprintf(&b, "%s  %s\n", styleSection.Render("STABILITY"), styleWarning.Render("⏳ stability days not met"))
+	}
+
 	// Reviews
 	if len(pr.Reviews) > 0 {
 		fmt.Fprintf(&b, "\n%s\n\n", divider)

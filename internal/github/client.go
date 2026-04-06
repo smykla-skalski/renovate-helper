@@ -317,6 +317,12 @@ func convertNode(n *prNode) PR {
 						failed++
 					}
 				} else if ctx.Context != "" {
+					if ctx.Context == "renovate/stability-days" {
+						if ctx.State != statusSuccess {
+							pr.StabilityDays = true
+						}
+						continue
+					}
 					total++
 					cr := CheckRun{Name: ctx.Context, Status: checkCompleted, Conclusion: ctx.State}
 					pr.Checks = append(pr.Checks, cr)
