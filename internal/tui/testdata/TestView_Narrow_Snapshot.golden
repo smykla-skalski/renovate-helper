@@ -1,9 +1,9 @@
      Title                                      St ⊘ ⚙  ⏱   
 ╭──────────────────────────────────────────────────────────╮
-│ org/other                                                │
+│ ▼ org/other                                              │
 │ 🔒 bump lodash (security)                     ◐  - - 12h │
 │    bump deps                                  ✗  - - 1d  │
-│ org/repo                                                 │
+│ ▼ org/repo                                               │
 │    update go                                  ✓  - - 2d  │
 │    update helm                                ◐  - - 3d  │
 │                                                          │
