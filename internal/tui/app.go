@@ -583,6 +583,7 @@ func (m Model) renderBottomBar() string {
 			helpHint("a/A", "approve"),
 			helpHint("c", "copy links"),
 			helpHint("f", "fix CI"),
+			helpHint("z", "collapse"),
 			helpHint("/", "filter"),
 			helpHint("o", "open"),
 			helpHint("!", "auto"),

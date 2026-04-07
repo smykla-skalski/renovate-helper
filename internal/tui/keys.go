@@ -18,6 +18,7 @@ type keyMap struct {
 	Sort       key.Binding
 	Open       key.Binding
 	Select     key.Binding
+	Collapse   key.Binding
 	FixCI      key.Binding
 	CopyLinks  key.Binding
 	Auto       key.Binding
@@ -41,6 +42,7 @@ var keys = keyMap{
 	Sort:       key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "sort")),
 	Open:       key.NewBinding(key.WithKeys("o"), key.WithHelp("o", "open in browser")),
 	Select:     key.NewBinding(key.WithKeys(" "), key.WithHelp("space", "select")),
+	Collapse:   key.NewBinding(key.WithKeys("z"), key.WithHelp("z", "collapse group")),
 	FixCI:      key.NewBinding(key.WithKeys("f"), key.WithHelp("f", "fix CI")),
 	CopyLinks:  key.NewBinding(key.WithKeys("c"), key.WithHelp("c", "copy review links")),
 	Auto:       key.NewBinding(key.WithKeys("!"), key.WithHelp("!", "auto approve+merge")),
