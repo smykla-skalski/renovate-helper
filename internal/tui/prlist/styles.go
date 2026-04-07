@@ -8,6 +8,7 @@ var (
 	styleFailed   = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
 	stylePending  = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
 	styleDim      = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	styleSecurity = lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Bold(true)
 	styleHeader   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("8"))
 	styleSelected = lipgloss.NewStyle().Background(lipgloss.Color("237")).Foreground(lipgloss.Color("15"))
 	styleBox      = lipgloss.NewStyle().

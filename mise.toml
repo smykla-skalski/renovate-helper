@@ -13,3 +13,19 @@ run = "go build -o gh-renovate-tracker ."
 [tasks.release-snapshot]
 description = "Build snapshot release"
 run = "goreleaser build --snapshot --clean"
+
+[tasks.check]
+description = "Run lint and tests"
+depends = ["lint", "test"]
+
+[tasks.lint]
+description = "Run golangci-lint"
+run = "golangci-lint run ./..."
+
+[tasks.test]
+description = "Run tests"
+run = "go test ./..."
+
+[tasks.upgrade]
+description = "Upgrade gh extension to latest release"
+run = "gh ext upgrade renovate-helper"

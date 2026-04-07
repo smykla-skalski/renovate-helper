@@ -102,6 +102,7 @@ func (m Model) SetFilter(f string) Model {
 func (m Model) sortFiltered() {
 	sortPRs(m.filtered, m.sort)
 	stableSortByRepo(m.filtered)
+	sortIconFirst(m.filtered)
 }
 
 func stableSortByRepo(prs []github.PR) {
@@ -221,6 +222,7 @@ type cols struct {
 	checks int
 	fixing int
 	age    int
+	icon   int // 0 when no PR in the list carries a left-side icon
 }
 
 const (
@@ -228,6 +230,7 @@ const (
 	colBorder = 2 // box left + right border
 	colSeps   = 4 // spaces between title|status|checks|fixing|age
 	colPadR   = 1 // right padding after last column
+	colIconW  = 2 // left-icon glyph + trailing space, e.g. "⚠ "
 )
 
 // columns computes column widths from the actual filtered PR data. Each
@@ -248,13 +251,21 @@ func (m Model) columns() cols {
 		age:    1,
 	}
 
+	hasIcon := false
 	for i := range m.filtered {
 		pr := m.filtered[i]
 
+		if prIcon(pr) != "" {
+			hasIcon = true
+		}
 		if sw := lipgloss.Width(prStatus(pr, compact)); sw > c.status {
 			c.status = sw
 		}
-		if cw := lipgloss.Width(prChecks(pr)); cw > c.checks {
+		checksStr := prChecks(pr)
+		if pr.StabilityDays {
+			checksStr += stylePending.Render("⏳")
+		}
+		if cw := lipgloss.Width(checksStr); cw > c.checks {
 			c.checks = cw
 		}
 		if aw := lipgloss.Width(prAge(pr.CreatedAt)); aw > c.age {
@@ -268,7 +279,11 @@ func (m Model) columns() cols {
 		}
 	}
 
-	fixed := colSel + c.status + c.checks + c.fixing + c.age + colSeps + colPadR + colBorder
+	if hasIcon {
+		c.icon = colIconW
+	}
+
+	fixed := colSel + c.icon + c.status + c.checks + c.fixing + c.age + colSeps + colPadR + colBorder
 	c.title = m.width - fixed
 	if c.title < 20 {
 		c.title = 20
@@ -416,8 +431,13 @@ func (m Model) View() string {
 	if m.compact() {
 		statusLabel = "St"
 	}
+	iconHeader := ""
+	if c.icon > 0 {
+		iconHeader = cell("", c.icon)
+	}
 	header := styleHeader.Render(
 		" " + strings.Repeat(" ", colSel) +
+			iconHeader +
 			cell("Title", c.title) + " " +
 			cell(statusLabel, c.status) + " " +
 			centerCell("⊘", c.checks) + " " +
@@ -469,9 +489,21 @@ func (m Model) renderRow(i int) string {
 	}
 	age := prAge(pr.CreatedAt)
 
+	iconGlyph := strings.Repeat(" ", c.icon) // blank placeholder preserves alignment
+	if c.icon > 0 {
+		if g := prIcon(pr); g != "" {
+			iconGlyph = g
+		}
+	}
+
 	if i == m.cursor {
 		sep := styleSelected.Render(" ")
+		iconCol := ""
+		if c.icon > 0 {
+			iconCol = highlightCell(iconGlyph, c.icon)
+		}
 		return highlightCell(sel, colSel) +
+			iconCol +
 			highlightCell(pr.Title, c.title) + sep +
 			highlightCell(status, c.status) + sep +
 			highlightCell(checks, c.checks) + sep +
@@ -479,7 +511,12 @@ func (m Model) renderRow(i int) string {
 			highlightCell(age, c.age) + styleSelected.Render(" ")
 	}
 
+	iconCol := ""
+	if c.icon > 0 {
+		iconCol = cell(iconGlyph, c.icon)
+	}
 	return cell(sel, colSel) +
+		iconCol +
 		cell(pr.Title, c.title) + " " +
 		cell(status, c.status) + " " +
 		cell(checks, c.checks) + " " +
@@ -559,6 +596,36 @@ func prAge(t time.Time) string {
 		return fmt.Sprintf("%dh", int(d.Hours()))
 	default:
 		return fmt.Sprintf("%dd", int(d.Hours()/24))
+	}
+}
+
+// prIcon returns the styled glyph for the left-icon column, or "" if none.
+// Add new icon conditions here; the column width is automatically reserved for
+// all rows in the list whenever any PR in the list returns a non-empty glyph.
+func prIcon(pr github.PR) string {
+	if isSecurity(pr) {
+		return styleSecurity.Render("🔒")
+	}
+	return ""
+}
+
+// isSecurity returns true if the PR has a label containing "security".
+func isSecurity(pr github.PR) bool {
+	for _, l := range pr.Labels {
+		if strings.Contains(strings.ToLower(l), "security") {
+			return true
+		}
+	}
+	return false
+}
+
+// sortIconFirst does a stable sort that puts PRs with a left-side icon before
+// plain PRs within each repo group. Must be called after stableSortByRepo.
+func sortIconFirst(prs []github.PR) {
+	for i := 1; i < len(prs); i++ {
+		for j := i; j > 0 && prs[j].Repo == prs[j-1].Repo && prIcon(prs[j]) != "" && prIcon(prs[j-1]) == ""; j-- {
+			prs[j], prs[j-1] = prs[j-1], prs[j]
+		}
 	}
 }
 
