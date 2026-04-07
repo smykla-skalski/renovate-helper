@@ -226,11 +226,12 @@ type cols struct {
 }
 
 const (
-	colSel    = 2 // selection indicator "● " or "  "
-	colBorder = 2 // box left + right border
-	colSeps   = 4 // spaces between title|status|checks|fixing|age
-	colPadR   = 1 // right padding after last column
-	colIconW  = 2 // left-icon glyph + trailing space, e.g. "⚠ "
+	colSel     = 1 // selection indicator "●" or " "
+	colBorder  = 2 // box left + right border
+	colSeps    = 4 // spaces between title|status|checks|fixing|age
+	colPadR    = 1 // right padding after last column
+	colIconW   = 2 // left-icon glyph width, e.g. "🔒"
+	colIconSep = 1 // space between icon column and title
 )
 
 // columns computes column widths from the actual filtered PR data. Each
@@ -279,11 +280,13 @@ func (m Model) columns() cols {
 		}
 	}
 
+	iconSep := 0
 	if hasIcon {
 		c.icon = colIconW
+		iconSep = colIconSep
 	}
 
-	fixed := colSel + c.icon + c.status + c.checks + c.fixing + c.age + colSeps + colPadR + colBorder
+	fixed := colSel + c.icon + iconSep + c.status + c.checks + c.fixing + c.age + colSeps + colPadR + colBorder
 	c.title = m.width - fixed
 	if c.title < 20 {
 		c.title = 20
@@ -432,12 +435,15 @@ func (m Model) View() string {
 		statusLabel = "St"
 	}
 	iconHeader := ""
+	iconHeaderSep := ""
 	if c.icon > 0 {
 		iconHeader = cell("", c.icon)
+		iconHeaderSep = " "
 	}
 	header := styleHeader.Render(
 		" " + strings.Repeat(" ", colSel) +
 			iconHeader +
+			iconHeaderSep +
 			cell("Title", c.title) + " " +
 			cell(statusLabel, c.status) + " " +
 			centerCell("⊘", c.checks) + " " +
@@ -471,9 +477,9 @@ func (m Model) View() string {
 
 func (m Model) renderRow(i int) string {
 	pr := m.filtered[i]
-	sel := "  "
+	sel := " "
 	if m.selected[i] {
-		sel = "● "
+		sel = "●"
 	}
 
 	c := m.columns()
@@ -500,7 +506,7 @@ func (m Model) renderRow(i int) string {
 		sep := styleSelected.Render(" ")
 		iconCol := ""
 		if c.icon > 0 {
-			iconCol = highlightCell(iconGlyph, c.icon)
+			iconCol = highlightCell(iconGlyph, c.icon) + sep
 		}
 		return highlightCell(sel, colSel) +
 			iconCol +
@@ -513,7 +519,7 @@ func (m Model) renderRow(i int) string {
 
 	iconCol := ""
 	if c.icon > 0 {
-		iconCol = cell(iconGlyph, c.icon)
+		iconCol = cell(iconGlyph, c.icon) + " "
 	}
 	return cell(sel, colSel) +
 		iconCol +

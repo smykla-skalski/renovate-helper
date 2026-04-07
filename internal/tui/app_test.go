@@ -180,6 +180,7 @@ func snapshotModel(width, height int) Model {
 		{Repo: "org/repo", Title: "update go", ReviewStatus: "APPROVED", CheckStatus: "SUCCESS", CreatedAt: now.Add(-48 * time.Hour)},
 		{Repo: "org/repo", Title: "update helm", ReviewStatus: "REVIEW_REQUIRED", CreatedAt: now.Add(-72 * time.Hour)},
 		{Repo: "org/other", Title: "bump deps", CheckStatus: "FAILURE", CreatedAt: now.Add(-24 * time.Hour)},
+		{Repo: "org/other", Title: "bump lodash (security)", CheckStatus: "SUCCESS", ReviewStatus: "REVIEW_REQUIRED", Labels: []string{"security"}, CreatedAt: now.Add(-12 * time.Hour)},
 	})
 	m.lastFetch = now.UnixNano()
 	m.status = testStatus

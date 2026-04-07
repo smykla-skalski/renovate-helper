@@ -1,11 +1,11 @@
-   Title                                                                           Status   ⊘ ⚙ ⏱   
+     Title                                                                        Status   ⊘ ⚙  ⏱   
 ╭──────────────────────────────────────────────────────────────────────────────────────────────────╮
 │ org/other                                                                                        │
-│  bump deps                                                                       ✗ Checks - - 1d │
+│ 🔒 bump lodash (security)                                                       ◐ Review - - 12h │
+│    bump deps                                                                    ✗ Checks - - 1d  │
 │ org/repo                                                                                         │
-│  update go                                                                       ✓ Ready  - - 2d │
-│  update helm                                                                     ◐ Review - - 3d │
-│                                                                                                  │
+│    update go                                                                    ✓ Ready  - - 2d  │
+│    update helm                                                                  ◐ Review - - 3d  │
 │                                                                                                  │
 │                                                                                                  │
 │                                                                                                  │
