@@ -120,8 +120,8 @@ func scheduledOrgDiscoverCmd(f prFetcher, cfg *config.Config, org string, after 
 			return errMsg{err: fmt.Errorf("discover org %s: %w", org, err)}
 		}
 		reposPRs := make(map[string][]github.PR)
-		for _, pr := range prs {
-			reposPRs[pr.Repo] = append(reposPRs[pr.Repo], pr)
+		for i := range prs {
+			reposPRs[prs[i].Repo] = append(reposPRs[prs[i].Repo], prs[i])
 		}
 		return orgDiscoveredMsg{org: org, reposPRs: reposPRs, fetchedAt: time.Now()}
 	}

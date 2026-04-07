@@ -13,10 +13,10 @@ import (
 
 // mockFetcher implements prFetcher for tests.
 type mockFetcher struct {
-	repoPRs   map[string][]github.PR
-	scopePRs  []github.PR
-	repoErr   error
-	scopeErr  error
+	repoPRs  map[string][]github.PR
+	repoErr  error
+	scopeErr error
+	scopePRs []github.PR
 }
 
 func (m *mockFetcher) FetchRepoPRs(repo string, _ *config.Config) ([]github.PR, error) {

@@ -14,17 +14,17 @@ import (
 
 // Entry holds the cached PRs for a single repository and when they were fetched.
 type Entry struct {
-	PRs       []github.PR `json:"prs"`
 	FetchedAt time.Time   `json:"fetched_at"`
+	PRs       []github.PR `json:"prs"`
 }
 
 // Cache is a thread-safe, disk-backed store of per-repo PR snapshots.
 // Reads and writes arrive from tea.Cmd goroutines so all access is guarded
 // by a RWMutex.
 type Cache struct {
-	mu      sync.RWMutex
-	path    string
 	entries map[string]Entry // key: "owner/repo"
+	path    string
+	mu      sync.RWMutex
 }
 
 // defaultCachePath returns the OS-appropriate cache file location.
@@ -103,8 +103,8 @@ func (c *Cache) Save() error {
 	}
 
 	dir := filepath.Dir(c.path)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return fmt.Errorf("mkdir cache dir: %w", err)
+	if errMkdir := os.MkdirAll(dir, 0o755); errMkdir != nil {
+		return fmt.Errorf("mkdir cache dir: %w", errMkdir)
 	}
 
 	// Write to a sibling temp file then rename for atomicity.

@@ -50,8 +50,8 @@ func TestLoad_ValidJSON(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 	prs := makePRs("owner/repo", 2)
 	type jsonEntry struct {
-		PRs       []github.PR `json:"prs"`
 		FetchedAt time.Time   `json:"fetched_at"`
+		PRs       []github.PR `json:"prs"`
 	}
 	data, err := json.Marshal(map[string]jsonEntry{
 		"owner/repo": {PRs: prs, FetchedAt: now},
