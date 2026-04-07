@@ -87,6 +87,19 @@ func New(client *github.Client, cfg *config.Config, c *cache.Cache) Model {
 		loading = false
 	}
 
+	// Show repos from config that are not yet in cache as loading rows so the
+	// user sees all expected repos from the start.
+	initialLoading := make(map[string]bool)
+	for _, r := range cfg.Repos {
+		if _, ok := c.Get(r); !ok {
+			initialLoading[r] = true
+		}
+	}
+	if len(initialLoading) > 0 {
+		list = list.SetLoadingRepos(initialLoading)
+		loading = true
+	}
+
 	return Model{
 		client:         client,
 		cfg:            cfg,
@@ -190,6 +203,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		m.list = m.list.SetPRs(m.cache.AllPRs())
+		m.list = m.list.SetLoadingRepos(computeLoadingRepos(m.cache, m.scheduledRepos))
 		m.list = m.list.SetStaleRepos(computeStaleRepos(m.cache, m.cfg))
 		if !m.loading {
 			m.lastFetch = now.UnixNano()
@@ -218,6 +232,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			delay := time.Duration(i) * 300 * time.Millisecond
 			cmds = append(cmds, scheduledOrgDiscoverCmd(m.client, m.cfg, org, delay))
 		}
+		// All scheduled repos have no cache data - show them as loading rows.
+		m.list = m.list.SetLoadingRepos(computeLoadingRepos(m.cache, m.scheduledRepos))
 		return m, tea.Batch(cmds...)
 
 	case batchProgressMsg:
@@ -256,6 +272,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case repoPRsLoadedMsg:
 		m.cache.Set(msg.repo, msg.prs, msg.fetchedAt)
 		m.list = m.list.SetPRs(m.cache.AllPRs())
+		m.list = m.list.SetLoadingRepos(computeLoadingRepos(m.cache, m.scheduledRepos))
 		m.list = m.list.SetStaleRepos(computeStaleRepos(m.cache, m.cfg))
 		m.lastFetch = msg.fetchedAt.UnixNano()
 		if m.loading {
@@ -655,6 +672,22 @@ func (m Model) renderErrorPopup() string {
 		lipgloss.WithWhitespaceChars(" "))
 }
 
+// computeLoadingRepos returns repos that are scheduled for refresh but have no
+// cache data yet. These show as spinner rows in the list from startup.
+func computeLoadingRepos(c *cache.Cache, scheduledRepos map[string]bool) map[string]bool {
+	cached := make(map[string]bool, len(c.Repos()))
+	for _, r := range c.Repos() {
+		cached[r] = true
+	}
+	loading := make(map[string]bool)
+	for r := range scheduledRepos {
+		if !cached[r] {
+			loading[r] = true
+		}
+	}
+	return loading
+}
+
 // computeStaleRepos returns the set of repos whose cache entry is older than
 // cfg.CacheMaxAge. Used to drive the stale-row style in prlist.
 func computeStaleRepos(c *cache.Cache, cfg *config.Config) map[string]bool {
@@ -696,6 +729,23 @@ func randomJitter(i, n int, interval time.Duration) time.Duration {
 	}
 	return time.Duration(i)*interval/time.Duration(denom) +
 		time.Duration(rand.Int63n(int64(interval/time.Duration(denom+1)+1)))
+}
+
+func formatAgo(d time.Duration) string {
+	switch {
+	case d < time.Minute:
+		return fmt.Sprintf("%ds", int(d.Seconds()))
+	case d < time.Hour:
+		return fmt.Sprintf("%dm", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%dh", int(d.Hours()))
+	case d < 30*24*time.Hour:
+		return fmt.Sprintf("%dd", int(d.Hours()/24))
+	case d < 365*24*time.Hour:
+		return fmt.Sprintf("%dmo", int(d.Hours()/24/30))
+	default:
+		return fmt.Sprintf("%dy", int(d.Hours()/24/365))
+	}
 }
 
 func truncateStyled(hints []string, sep string, maxWidth int) string {
@@ -768,8 +818,12 @@ func (m Model) renderBottomBar() string {
 	case m.status != "":
 		status = styleReady.Render("✓ " + m.status)
 	default:
-		ago := time.Since(time.Unix(0, m.lastFetch)).Round(time.Second)
-		status = styleDim.Render(fmt.Sprintf("↻ %s ago", ago))
+		if m.lastFetch == 0 {
+			status = styleDim.Render("↻ syncing…")
+		} else {
+			ago := time.Since(time.Unix(0, m.lastFetch))
+			status = styleDim.Render("↻ " + formatAgo(ago) + " ago")
+		}
 	}
 
 	pad := 2

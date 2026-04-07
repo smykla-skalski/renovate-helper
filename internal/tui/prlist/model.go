@@ -42,6 +42,7 @@ type rowKind int
 const (
 	rowHeader rowKind = iota
 	rowPR
+	rowLoading // repo is known but no PRs fetched yet
 )
 
 type displayRow struct {
@@ -58,6 +59,7 @@ type Model struct {
 	collapsed      map[string]bool
 	collapseAnchor map[string]int // repo -> filtered[] prIndex before collapse; cleared on expand or cursor move
 	staleRepos     map[string]bool
+	loadingRepos   map[string]bool // repos with active fetch but no PRs yet
 	filter         string
 	spinnerFrame   string
 	prs            []github.PR
@@ -79,6 +81,7 @@ func New() Model {
 		explicitOrder:  make(map[string]int),
 		orgOrder:       make(map[string]int),
 		staleRepos:     make(map[string]bool),
+		loadingRepos:   make(map[string]bool),
 	}
 }
 
@@ -112,6 +115,19 @@ func (m Model) SetStaleRepos(repos map[string]bool) Model {
 // the icon column of stale rows.
 func (m Model) SetSpinnerFrame(frame string) Model {
 	m.spinnerFrame = frame
+	return m
+}
+
+// SetLoadingRepos sets repos that are being fetched but have no PRs yet.
+// These repos appear in the list with a spinner row so the user sees them
+// from the start rather than waiting for data to arrive.
+func (m Model) SetLoadingRepos(repos map[string]bool) Model {
+	if repos == nil {
+		m.loadingRepos = make(map[string]bool)
+	} else {
+		m.loadingRepos = repos
+	}
+	m.rows = m.buildRows()
 	return m
 }
 
@@ -173,18 +189,48 @@ func (m Model) sortFiltered() {
 }
 
 func (m Model) buildRows() []displayRow {
-	var rows []displayRow
-	var lastRepo string
+	// Collect all repos: those with filtered PRs + those loading with no PRs yet.
+	seenRepos := make(map[string]bool)
+	filteredByRepo := make(map[string][]int)
+	allRepos := make([]string, 0, len(m.filtered)+len(m.loadingRepos))
+
 	for i := range m.filtered {
 		repo := m.filtered[i].Repo
-		if repo != lastRepo {
-			lastRepo = repo
-			rows = append(rows, displayRow{repo: repo, kind: rowHeader})
-		}
-		if !m.collapsed[repo] {
-			rows = append(rows, displayRow{repo: repo, kind: rowPR, prIndex: i})
+		filteredByRepo[repo] = append(filteredByRepo[repo], i)
+		if !seenRepos[repo] {
+			seenRepos[repo] = true
+			allRepos = append(allRepos, repo)
 		}
 	}
+	for repo := range m.loadingRepos {
+		if !seenRepos[repo] {
+			seenRepos[repo] = true
+			allRepos = append(allRepos, repo)
+		}
+	}
+
+	// Sort using the same comparator as stableSortByRepo.
+	for i := 1; i < len(allRepos); i++ {
+		for j := i; j > 0 && m.repoLess(allRepos[j], allRepos[j-1]); j-- {
+			allRepos[j], allRepos[j-1] = allRepos[j-1], allRepos[j]
+		}
+	}
+
+	var rows []displayRow
+	for _, repo := range allRepos {
+		rows = append(rows, displayRow{repo: repo, kind: rowHeader})
+		if indices, hasData := filteredByRepo[repo]; hasData {
+			if !m.collapsed[repo] {
+				for _, idx := range indices {
+					rows = append(rows, displayRow{repo: repo, kind: rowPR, prIndex: idx})
+				}
+			}
+		} else {
+			// No PRs yet - show a loading indicator row.
+			rows = append(rows, displayRow{repo: repo, kind: rowLoading})
+		}
+	}
+
 	return rows
 }
 
@@ -674,9 +720,12 @@ func (m Model) View() string {
 
 	var rows []string
 	for i := m.offset; i < len(m.rows) && i-m.offset < visible; i++ {
-		if m.rows[i].kind == rowHeader {
+		switch m.rows[i].kind {
+		case rowHeader:
 			rows = append(rows, m.renderRepoHeader(i))
-		} else {
+		case rowLoading:
+			rows = append(rows, m.renderLoadingRow())
+		case rowPR:
 			rows = append(rows, m.renderRow(m.rows[i].prIndex))
 		}
 	}
@@ -708,6 +757,26 @@ func (m Model) renderRepoHeader(rowIdx int) string {
 		return styleStaleHeader.Render(text)
 	}
 	return styleHeader.Render(text)
+}
+
+func (m Model) renderLoadingRow() string {
+	c := m.columns()
+	// Use the native spinner frame (with its own ANSI styling) — no stripping.
+	var iconCol, title string
+	if c.icon > 0 {
+		iconCol = cell(m.spinnerFrame, c.icon) + " "
+		title = staleCell("fetching…", c.title)
+	} else {
+		// No icon column: inline spinner + dim text in the title cell.
+		title = cell(m.spinnerFrame+" fetching…", c.title)
+	}
+	return cell(" ", colSel) +
+		iconCol +
+		title + " " +
+		staleCell("", c.status) + " " +
+		staleCell("", c.checks) + " " +
+		staleCell("", c.fixing) + " " +
+		staleCell("", c.age) + " "
 }
 
 func (m Model) renderRow(i int) string {
@@ -758,7 +827,7 @@ func (m Model) renderRow(i int) string {
 		spinnerGlyph := ansi.Strip(m.spinnerFrame)
 		iconCol := ""
 		if c.icon > 0 {
-			iconCol = staleCell(spinnerGlyph, c.icon)
+			iconCol = staleCell(spinnerGlyph, c.icon) + " "
 		}
 		return staleCell(sel, colSel) +
 			iconCol +
