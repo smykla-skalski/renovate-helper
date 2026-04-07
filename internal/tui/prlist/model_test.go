@@ -218,7 +218,7 @@ func TestStableSortByRepo(t *testing.T) {
 		{Repo: "zzz/a", Title: "third"},
 		{Repo: "aaa/b", Title: "fourth"},
 	}
-	stableSortByRepo(prs)
+	New().stableSortByRepo(prs)
 	if prs[0].Repo != "aaa/b" || prs[1].Repo != "aaa/b" {
 		t.Errorf("first two should be aaa/b, got %q %q", prs[0].Repo, prs[1].Repo)
 	}
