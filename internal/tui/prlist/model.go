@@ -128,6 +128,15 @@ func (m Model) SetLoadingRepos(repos map[string]bool) Model {
 		m.loadingRepos = repos
 	}
 	m.rows = m.buildRows()
+	if m.cursor >= len(m.rows) {
+		m.cursor = max(0, len(m.rows)-1)
+	}
+	if m.cursor < len(m.rows) && m.rows[m.cursor].kind == rowHeader {
+		m = m.skipHeaders()
+	}
+	if m.offset > m.cursor {
+		m.offset = m.cursor
+	}
 	return m
 }
 

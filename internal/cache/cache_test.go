@@ -36,9 +36,13 @@ func writeCacheFile(t *testing.T, content string) string {
 }
 
 func TestLoad_NoFile(t *testing.T) {
-	c := cache.Empty()
+	path := filepath.Join(t.TempDir(), "nonexistent", "cache.json")
+	c, err := cache.LoadFrom(path)
+	if err != nil {
+		t.Fatalf("LoadFrom nonexistent path: %v", err)
+	}
 	if c == nil {
-		t.Fatal("Empty() returned nil")
+		t.Fatal("LoadFrom returned nil")
 	}
 	repos := c.Repos()
 	if len(repos) != 0 {

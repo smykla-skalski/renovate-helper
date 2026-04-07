@@ -110,6 +110,10 @@ func New(client *github.Client, cfg *config.Config, c *cache.Cache) Model {
 		}
 	}
 
+	// Seed the spinner frame so the first render shows a glyph rather than a
+	// blank icon (spinner.TickMsg fires after the initial paint).
+	list = list.SetSpinnerFrame(s.View())
+
 	return Model{
 		client:         client,
 		cfg:            cfg,
@@ -215,25 +219,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.cache.Set(repo, prs, now)
 			if !m.scheduledRepos[repo] {
 				m.scheduledRepos[repo] = true
-				jitter := time.Duration(rand.Int63n(int64(m.cfg.RefreshInterval)))
+				jitter := safeJitter(m.cfg.RefreshInterval)
 				cmds = append(cmds, scheduledRepoRefreshCmd(repo, m.cfg.RefreshInterval+jitter))
 			}
 		}
 		m.list = m.list.SetPRs(m.cache.AllPRs())
 		m.list = m.list.SetLoadingRepos(computeLoadingRepos(m.cache, m.scheduledRepos))
 		m.list = m.list.SetStaleRepos(computeSpinningRepos(m.cache, m.cfg, m.fetchingRepos))
-		if !m.loading {
-			m.lastFetch = now.UnixNano()
-		}
+		// Always update lastFetch so the bottom bar shows "↻ X ago" and not
+		// "↻ syncing…" when org discovery is the first data to arrive on cold start.
+		m.lastFetch = now.UnixNano()
 		if err := m.cache.Save(); err != nil {
 			slog.Error("cache save failed", "error", err)
 		}
-		jitter := time.Duration(rand.Int63n(int64(m.cfg.RefreshInterval / 4)))
+		jitter := safeJitter(m.cfg.RefreshInterval / 4)
 		cmds = append(cmds, scheduledOrgDiscoverCmd(m.client, m.cfg, msg.org, m.cfg.RefreshInterval+jitter))
 		return m, tea.Batch(cmds...)
 
 	case cacheClearedMsg:
-		_ = m.cache.Clear()
+		if err := m.cache.Clear(); err != nil {
+			slog.Error("cache clear failed", "error", err)
+		}
 		m.list = m.list.SetPRs([]github.PR{})
 		m.list = m.list.SetStaleRepos(nil)
 		m.loading = true
@@ -303,7 +309,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if err := m.cache.Save(); err != nil {
 			slog.Error("cache save failed", "error", err)
 		}
-		jitter := time.Duration(rand.Int63n(int64(m.cfg.RefreshInterval / 5)))
+		jitter := safeJitter(m.cfg.RefreshInterval / 5)
 		return m, scheduledRepoRefreshCmd(msg.repo, m.cfg.RefreshInterval+jitter)
 
 	case autoModeDoneMsg:
@@ -739,8 +745,16 @@ func initialRepoDelay(c *cache.Cache, repo string, cfg *config.Config, i, n int)
 	if remaining < 0 {
 		remaining = 0
 	}
-	jitter := time.Duration(rand.Int63n(int64(cfg.RefreshInterval / 5)))
+	jitter := safeJitter(cfg.RefreshInterval / 5)
 	return remaining + jitter
+}
+
+// safeJitter returns a random duration in [0, bound). If bound <= 0, returns 0.
+func safeJitter(bound time.Duration) time.Duration {
+	if bound <= 0 {
+		return 0
+	}
+	return time.Duration(rand.Int63n(int64(bound)))
 }
 
 // randomJitter returns a stagger delay for slot i of n, spread across interval.
