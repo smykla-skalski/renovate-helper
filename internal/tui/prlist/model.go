@@ -57,7 +57,9 @@ type Model struct {
 	fixing         map[string]bool
 	collapsed      map[string]bool
 	collapseAnchor map[string]int // repo -> filtered[] prIndex before collapse; cleared on expand or cursor move
+	staleRepos     map[string]bool
 	filter         string
+	spinnerFrame   string
 	prs            []github.PR
 	filtered       []github.PR
 	rows           []displayRow
@@ -76,6 +78,7 @@ func New() Model {
 		collapseAnchor: make(map[string]int),
 		explicitOrder:  make(map[string]int),
 		orgOrder:       make(map[string]int),
+		staleRepos:     make(map[string]bool),
 	}
 }
 
@@ -91,6 +94,24 @@ func (m Model) SetRepoOrder(repos, orgs []string) Model {
 	for i, o := range orgs {
 		m.orgOrder[o] = i
 	}
+	return m
+}
+
+// SetStaleRepos replaces the set of repos that should render with the stale
+// (very dim + spinner icon) style. Pass nil to clear all stale markers.
+func (m Model) SetStaleRepos(repos map[string]bool) Model {
+	if repos == nil {
+		m.staleRepos = make(map[string]bool)
+	} else {
+		m.staleRepos = repos
+	}
+	return m
+}
+
+// SetSpinnerFrame sets the current spinner animation frame glyph to show in
+// the icon column of stale rows.
+func (m Model) SetSpinnerFrame(frame string) Model {
+	m.spinnerFrame = frame
 	return m
 }
 
@@ -422,7 +443,7 @@ func (m Model) columns() cols {
 	for i := range m.filtered {
 		pr := m.filtered[i]
 
-		if prIcon(pr) != "" {
+		if prIcon(pr) != "" || m.staleRepos[pr.Repo] {
 			hasIcon = true
 		}
 		if sw := lipgloss.Width(prStatus(pr, compact)); sw > c.status {
@@ -471,6 +492,13 @@ func cell(s string, w int) string {
 // are stripped so the highlight background covers the full cell width.
 func highlightCell(s string, w int) string {
 	return styleSelected.Width(w).MaxWidth(w).Inline(true).
+		Render(ansi.Truncate(ansi.Strip(s), w, "…"))
+}
+
+// staleCell renders a cell with the stale style (very dim). All ANSI codes
+// in s are stripped first so styleStale covers the cell uniformly.
+func staleCell(s string, w int) string {
+	return styleStale.Width(w).MaxWidth(w).Inline(true).
 		Render(ansi.Truncate(ansi.Strip(s), w, "…"))
 }
 
@@ -676,6 +704,9 @@ func (m Model) renderRepoHeader(rowIdx int) string {
 		}
 		return styleSelected.Render(text)
 	}
+	if m.staleRepos[repo] {
+		return styleStaleHeader.Render(text)
+	}
 	return styleHeader.Render(text)
 }
 
@@ -706,6 +737,7 @@ func (m Model) renderRow(i int) string {
 		}
 	}
 
+	// Cursor row: highlight wins over stale.
 	if i == m.cursorPRIndex() {
 		sep := styleSelected.Render(" ")
 		iconCol := ""
@@ -721,6 +753,23 @@ func (m Model) renderRow(i int) string {
 			highlightCell(age, c.age) + styleSelected.Render(" ")
 	}
 
+	// Stale row: dim everything, show spinner in the icon column.
+	if m.staleRepos[pr.Repo] {
+		spinnerGlyph := ansi.Strip(m.spinnerFrame)
+		iconCol := ""
+		if c.icon > 0 {
+			iconCol = staleCell(spinnerGlyph, c.icon)
+		}
+		return staleCell(sel, colSel) +
+			iconCol +
+			staleCell(pr.Title, c.title) + " " +
+			staleCell(ansi.Strip(status), c.status) + " " +
+			staleCell(ansi.Strip(checks), c.checks) + " " +
+			staleCell(ansi.Strip(fixing), c.fixing) + " " +
+			staleCell(age, c.age) + " "
+	}
+
+	// Normal row.
 	iconCol := ""
 	if c.icon > 0 {
 		iconCol = cell(iconGlyph, c.icon) + " "

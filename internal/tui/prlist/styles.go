@@ -14,4 +14,9 @@ var (
 	styleBox      = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(lipgloss.Color("237"))
+	// styleStale is applied to every cell in a row whose cache is stale.
+	// 238 is a very dark gray, clearly indicating the data is old/loading.
+	styleStale = lipgloss.NewStyle().Foreground(lipgloss.Color("238"))
+	// styleStaleHeader is the same dim color applied to repo group headers.
+	styleStaleHeader = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("238"))
 )
