@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"strings"
 	"time"
 
@@ -58,7 +59,15 @@ func isRetryable(err error) bool {
 	if errors.As(err, &httpErr) && httpErr.StatusCode >= 500 {
 		return true
 	}
-	return strings.Contains(strings.ToLower(err.Error()), "rate limit")
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return true
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "rate limit") ||
+		strings.Contains(msg, "tls handshake") ||
+		strings.Contains(msg, "connection reset") ||
+		strings.Contains(msg, "eof")
 }
 
 func (c *Client) doWithRetry(query string, vars map[string]any, result any) error {

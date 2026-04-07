@@ -26,6 +26,10 @@ run = "golangci-lint run ./..."
 description = "Run tests"
 run = "go test ./..."
 
+[tasks.snapshots]
+description = "Regenerate golden snapshot files"
+run = "go test ./internal/tui/ -update"
+
 [tasks.upgrade]
 description = "Upgrade gh extension to latest release"
 run = "gh ext upgrade renovate-helper"
