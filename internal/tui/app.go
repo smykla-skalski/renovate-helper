@@ -101,6 +101,15 @@ func New(client *github.Client, cfg *config.Config, c *cache.Cache) Model {
 		loading = true
 	}
 
+	// Seed lastFetch from the most recent cache entry so the bottom bar shows
+	// "↻ X ago" immediately on warm start instead of "↻ syncing…".
+	var lastFetch int64
+	for _, repo := range c.Repos() {
+		if entry, ok := c.Get(repo); ok && entry.FetchedAt.UnixNano() > lastFetch {
+			lastFetch = entry.FetchedAt.UnixNano()
+		}
+	}
+
 	return Model{
 		client:         client,
 		cfg:            cfg,
@@ -111,6 +120,7 @@ func New(client *github.Client, cfg *config.Config, c *cache.Cache) Model {
 		help:           help.New(),
 		spinner:        s,
 		loading:        loading,
+		lastFetch:      lastFetch,
 		scheduledRepos: make(map[string]bool),
 		fetchingRepos:  make(map[string]bool),
 	}
