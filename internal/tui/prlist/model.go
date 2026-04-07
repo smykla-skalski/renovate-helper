@@ -37,21 +37,59 @@ const (
 	conclusionSkipped   = "SKIPPED"
 )
 
+type rowKind int
+
+const (
+	rowHeader rowKind = iota
+	rowPR
+)
+
+type displayRow struct {
+	repo    string  // always set
+	kind    rowKind // rowHeader or rowPR
+	prIndex int     // valid only when kind == rowPR; index into filtered[]
+}
+
 type Model struct {
-	selected map[int]bool
-	fixing   map[string]bool
-	filter   string
-	prs      []github.PR
-	filtered []github.PR
-	cursor   int
-	offset   int
-	width    int
-	height   int
-	sort     sortMode
+	explicitOrder map[string]int
+	orgOrder      map[string]int
+	selected      map[int]bool
+	fixing        map[string]bool
+	collapsed     map[string]bool
+	filter        string
+	prs           []github.PR
+	filtered      []github.PR
+	rows          []displayRow
+	cursor        int
+	offset        int
+	width         int
+	height        int
+	sort          sortMode
 }
 
 func New() Model {
-	return Model{selected: make(map[int]bool), fixing: make(map[string]bool)}
+	return Model{
+		selected:      make(map[int]bool),
+		fixing:        make(map[string]bool),
+		collapsed:     make(map[string]bool),
+		explicitOrder: make(map[string]int),
+		orgOrder:      make(map[string]int),
+	}
+}
+
+// SetRepoOrder configures the display order for repo groups. Explicit repos
+// appear first (in config order); org repos follow grouped by org (in config
+// org order), alphabetically within each org.
+func (m Model) SetRepoOrder(repos, orgs []string) Model {
+	m.explicitOrder = make(map[string]int, len(repos))
+	for i, r := range repos {
+		m.explicitOrder[r] = i
+	}
+	m.orgOrder = make(map[string]int, len(orgs))
+	for i, o := range orgs {
+		m.orgOrder[o] = i
+	}
+	return m
 }
 
 func (m Model) SetFixing(prKey string, active bool) Model {
@@ -81,8 +119,12 @@ func (m Model) SetPRs(prs []github.PR) Model {
 	m.prs = prs
 	m.filtered = applyFilter(prs, m.filter)
 	m.sortFiltered()
-	if m.cursor >= len(m.filtered) {
-		m.cursor = max(0, len(m.filtered)-1)
+	m.rows = m.buildRows()
+	if m.cursor >= len(m.rows) {
+		m.cursor = max(0, len(m.rows)-1)
+	}
+	if m.cursor < len(m.rows) && m.rows[m.cursor].kind == rowHeader {
+		m = m.skipHeaders()
 	}
 	if m.offset > m.cursor {
 		m.offset = m.cursor
@@ -94,30 +136,133 @@ func (m Model) SetFilter(f string) Model {
 	m.filter = f
 	m.filtered = applyFilter(m.prs, f)
 	m.sortFiltered()
+	m.rows = m.buildRows()
 	m.cursor = 0
 	m.offset = 0
+	m = m.skipHeaders()
 	return m
 }
 
 func (m Model) sortFiltered() {
 	sortPRs(m.filtered, m.sort)
-	stableSortByRepo(m.filtered)
+	m.stableSortByRepo(m.filtered)
 	sortIconFirst(m.filtered)
 }
 
-func stableSortByRepo(prs []github.PR) {
+func (m Model) buildRows() []displayRow {
+	var rows []displayRow
+	var lastRepo string
+	for i := range m.filtered {
+		repo := m.filtered[i].Repo
+		if repo != lastRepo {
+			lastRepo = repo
+			rows = append(rows, displayRow{repo: repo, kind: rowHeader})
+		}
+		if !m.collapsed[repo] {
+			rows = append(rows, displayRow{repo: repo, kind: rowPR, prIndex: i})
+		}
+	}
+	return rows
+}
+
+func (m Model) prCountInRepo(repo string) int {
+	count := 0
+	for i := range m.filtered {
+		if m.filtered[i].Repo == repo {
+			count++
+		}
+	}
+	return count
+}
+
+func (m Model) toggleCollapse(repo string) Model {
+	m.collapsed[repo] = !m.collapsed[repo]
+	m.rows = m.buildRows()
+	if m.cursor >= len(m.rows) {
+		m.cursor = max(0, len(m.rows)-1)
+	}
+	if m.offset > m.cursor {
+		m.offset = m.cursor
+	}
+	for m.cursor > m.lastVisibleIndex(m.offset) {
+		m.offset++
+	}
+	return m
+}
+
+// skipHeaders advances cursor forward past any consecutive header rows. Called
+// after cursor resets so the default position is always a PR row when available.
+func (m Model) skipHeaders() Model {
+	for m.cursor < len(m.rows) && m.rows[m.cursor].kind == rowHeader {
+		m.cursor++
+	}
+	if m.cursor >= len(m.rows) && len(m.rows) > 0 {
+		m.cursor = len(m.rows) - 1
+	}
+	return m
+}
+
+func (m Model) cursorPRIndex() int {
+	if m.cursor < len(m.rows) && m.rows[m.cursor].kind == rowPR {
+		return m.rows[m.cursor].prIndex
+	}
+	return -1
+}
+
+func (m Model) cursorRepo() string {
+	if m.cursor < len(m.rows) {
+		return m.rows[m.cursor].repo
+	}
+	return ""
+}
+
+func (m Model) stableSortByRepo(prs []github.PR) {
 	for i := 1; i < len(prs); i++ {
-		for j := i; j > 0 && prs[j].Repo < prs[j-1].Repo; j-- {
+		for j := i; j > 0 && m.repoLess(prs[j].Repo, prs[j-1].Repo); j-- {
 			prs[j], prs[j-1] = prs[j-1], prs[j]
 		}
 	}
 }
 
+// repoLess reports whether repo a should sort before repo b.
+// Explicit config repos come first (in config order), then org repos
+// (grouped by org config order, alphabetically within each org), then
+// everything else alphabetically.
+func (m Model) repoLess(a, b string) bool {
+	if ai, aOk := m.explicitOrder[a]; aOk {
+		if bi, bOk := m.explicitOrder[b]; bOk {
+			return ai < bi
+		}
+		return true // explicit always beats non-explicit
+	}
+	if _, bOk := m.explicitOrder[b]; bOk {
+		return false
+	}
+	aOrg, _, _ := strings.Cut(a, "/")
+	bOrg, _, _ := strings.Cut(b, "/")
+	ai, aOk := m.orgOrder[aOrg]
+	bi, bOk := m.orgOrder[bOrg]
+	if aOk && bOk {
+		if ai != bi {
+			return ai < bi
+		}
+		return a < b
+	}
+	if aOk {
+		return true
+	}
+	if bOk {
+		return false
+	}
+	return a < b
+}
+
 func (m Model) Selected() (github.PR, bool) {
-	if len(m.filtered) == 0 {
+	idx := m.cursorPRIndex()
+	if idx < 0 {
 		return github.PR{}, false
 	}
-	return m.filtered[m.cursor], true
+	return m.filtered[idx], true
 }
 
 func (m Model) SelectedPRs() []github.PR {
@@ -133,10 +278,10 @@ func (m Model) SelectedPRs() []github.PR {
 // SelectedPRsInGroup returns selected PRs belonging to the same repo as the
 // currently focused PR.
 func (m Model) SelectedPRsInGroup() []github.PR {
-	if len(m.filtered) == 0 {
+	repo := m.cursorRepo()
+	if repo == "" {
 		return nil
 	}
-	repo := m.filtered[m.cursor].Repo
 	var prs []github.PR
 	for i, sel := range m.selected {
 		if sel && i < len(m.filtered) && m.filtered[i].Repo == repo {
@@ -149,10 +294,10 @@ func (m Model) SelectedPRsInGroup() []github.PR {
 // PRsNeedingApprovalInGroup returns PRs in the current repo group that need
 // review and don't have failing checks.
 func (m Model) PRsNeedingApprovalInGroup() []github.PR {
-	if len(m.filtered) == 0 {
+	repo := m.cursorRepo()
+	if repo == "" {
 		return nil
 	}
-	repo := m.filtered[m.cursor].Repo
 	var prs []github.PR
 	for i := range m.filtered {
 		pr := m.filtered[i]
@@ -189,12 +334,9 @@ func (m Model) AutoMergeablePRs() []github.PR {
 	return prs
 }
 
-// CurrentRepo returns the repo of the currently focused PR.
+// CurrentRepo returns the repo of the currently focused row.
 func (m Model) CurrentRepo() string {
-	if len(m.filtered) == 0 {
-		return ""
-	}
-	return m.filtered[m.cursor].Repo
+	return m.cursorRepo()
 }
 
 func (m Model) ClearSelected() Model {
@@ -318,35 +460,23 @@ func centerCell(s string, w int) string {
 	return lipgloss.NewStyle().Width(w).MaxWidth(w).Inline(true).Render(t)
 }
 
-// rowAtY maps a screen Y coordinate to a filtered PR index, accounting for
-// the header line, box top border, and repo group header rows.
+// rowAtY maps a screen Y coordinate to a rows[] index, accounting for the
+// header line and box top border.
 func (m Model) rowAtY(y int) (int, bool) {
 	// y=0 is the column header, y=1 is the box top border.
 	contentY := y - 2
 	if contentY < 0 {
 		return 0, false
 	}
-
-	row := 0
-	var lastRepo string
-	for i := m.offset; i < len(m.filtered); i++ {
-		if m.filtered[i].Repo != lastRepo {
-			lastRepo = m.filtered[i].Repo
-			if row == contentY {
-				return 0, false // clicked a repo group header
-			}
-			row++
-		}
-		if row == contentY {
-			return i, true
-		}
-		row++
+	idx := m.offset + contentY
+	if idx >= len(m.rows) {
+		return 0, false
 	}
-	return 0, false
+	return idx, true
 }
 
 func (m Model) moveUp(n int) Model {
-	if len(m.filtered) == 0 {
+	if len(m.rows) == 0 {
 		return m
 	}
 	m.cursor = max(0, m.cursor-n)
@@ -357,29 +487,18 @@ func (m Model) moveUp(n int) Model {
 }
 
 func (m Model) lastVisibleIndex(offset int) int {
-	visible := m.visibleRows()
-	rowsUsed := 0
-	last := offset
-	var lastRepo string
-	for i := offset; i < len(m.filtered) && rowsUsed < visible; i++ {
-		if m.filtered[i].Repo != lastRepo {
-			lastRepo = m.filtered[i].Repo
-			if rowsUsed+1 >= visible {
-				break
-			}
-			rowsUsed++
-		}
-		rowsUsed++
-		last = i
+	last := min(offset+m.visibleRows()-1, len(m.rows)-1)
+	if last < 0 {
+		return 0
 	}
 	return last
 }
 
 func (m Model) moveDown(n int) Model {
-	if len(m.filtered) == 0 {
+	if len(m.rows) == 0 {
 		return m
 	}
-	m.cursor = min(len(m.filtered)-1, m.cursor+n)
+	m.cursor = min(len(m.rows)-1, m.cursor+n)
 	for m.cursor > m.lastVisibleIndex(m.offset) {
 		m.offset++
 	}
@@ -394,11 +513,18 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			m = m.moveUp(1)
 		case key.Matches(msg, downKey):
 			m = m.moveDown(1)
+		case key.Matches(msg, expandKey):
+			if m.cursor < len(m.rows) && m.rows[m.cursor].kind == rowHeader {
+				m = m.toggleCollapse(m.rows[m.cursor].repo)
+			}
 		case key.Matches(msg, selectKey):
-			m.selected[m.cursor] = !m.selected[m.cursor]
+			if idx := m.cursorPRIndex(); idx >= 0 {
+				m.selected[idx] = !m.selected[idx]
+			}
 		case key.Matches(msg, sortKey):
 			m.sort = (m.sort + 1) % 3
 			m.sortFiltered()
+			m.rows = m.buildRows()
 		}
 	case tea.MouseWheelMsg:
 		switch msg.Button {
@@ -410,7 +536,11 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	case tea.MouseClickMsg:
 		if msg.Button == tea.MouseLeft {
 			if idx, ok := m.rowAtY(tea.Mouse(msg).Y); ok {
-				m.cursor = idx
+				if m.rows[idx].kind == rowHeader {
+					m = m.toggleCollapse(m.rows[idx].repo)
+				} else {
+					m.cursor = idx
+				}
 			}
 		}
 	}
@@ -420,6 +550,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 var (
 	upKey     = key.NewBinding(key.WithKeys("k", "up"))
 	downKey   = key.NewBinding(key.WithKeys("j", "down"))
+	expandKey = key.NewBinding(key.WithKeys("enter"))
 	selectKey = key.NewBinding(key.WithKeys(" "))
 	sortKey   = key.NewBinding(key.WithKeys("s"))
 )
@@ -452,27 +583,40 @@ func (m Model) View() string {
 	)
 
 	visible := m.visibleRows()
-	start := m.offset
 
 	var rows []string
-	var lastRepo string
-	rowsUsed := 0
-	for i := start; i < len(m.filtered) && rowsUsed < visible; i++ {
-		if m.filtered[i].Repo != lastRepo {
-			lastRepo = m.filtered[i].Repo
-			if rowsUsed+1 >= visible {
-				break
-			}
-			rows = append(rows, styleHeader.Render(" "+lastRepo))
-			rowsUsed++
+	for i := m.offset; i < len(m.rows) && i-m.offset < visible; i++ {
+		if m.rows[i].kind == rowHeader {
+			rows = append(rows, m.renderRepoHeader(i))
+		} else {
+			rows = append(rows, m.renderRow(m.rows[i].prIndex))
 		}
-		rows = append(rows, m.renderRow(i))
-		rowsUsed++
 	}
 
 	body := lipgloss.JoinVertical(lipgloss.Left, rows...)
 	inner := styleBox.Width(m.width).Height(m.height - 1).Render(body)
 	return lipgloss.JoinVertical(lipgloss.Left, header, inner)
+}
+
+func (m Model) renderRepoHeader(rowIdx int) string {
+	repo := m.rows[rowIdx].repo
+	triangle := "▼"
+	if m.collapsed[repo] {
+		triangle = "▶"
+	}
+	label := triangle + " " + repo
+	if m.collapsed[repo] {
+		label += fmt.Sprintf(" (%d)", m.prCountInRepo(repo))
+	}
+	text := " " + label
+	if rowIdx == m.cursor {
+		pad := m.width - lipgloss.Width(text) - colBorder
+		if pad > 0 {
+			text += strings.Repeat(" ", pad)
+		}
+		return styleSelected.Render(text)
+	}
+	return styleHeader.Render(text)
 }
 
 func (m Model) renderRow(i int) string {
@@ -502,7 +646,7 @@ func (m Model) renderRow(i int) string {
 		}
 	}
 
-	if i == m.cursor {
+	if i == m.cursorPRIndex() {
 		sep := styleSelected.Render(" ")
 		iconCol := ""
 		if c.icon > 0 {
