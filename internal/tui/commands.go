@@ -333,13 +333,11 @@ func prepareFixCICmd(pr github.PR, cfg *config.Config) tea.Cmd {
 
 		bareDir, wtDir := worktreePaths(owner, repo, pr.Number)
 
-		// Setup bare clone or fetch.
-		freshClone := false
+		// Setup bare clone if needed.
 		if _, statErr := os.Stat(bareDir); os.IsNotExist(statErr) {
 			if err = cloneBareRepo(ctx, owner, repo, bareDir); err != nil {
 				return errMsg{err: err}
 			}
-			freshClone = true
 		}
 
 		remote, err := resolveRemote(ctx, bareDir, cfg)
@@ -347,11 +345,11 @@ func prepareFixCICmd(pr github.PR, cfg *config.Config) tea.Cmd {
 			return errMsg{err: err}
 		}
 
-		if !freshClone {
-			slog.Info("fetching branch", "repo", pr.Repo, "branch", branch, "remote", remote)
-			if out, err := exec.CommandContext(ctx, "git", "-C", bareDir, "fetch", remote, branch).CombinedOutput(); err != nil {
-				return errMsg{err: fmt.Errorf("git fetch: %s: %w", out, err)}
-			}
+		// Always fetch: bare clones store branches in refs/heads/, not
+		// refs/remotes/<remote>/, so worktree add needs the tracking ref.
+		slog.Info("fetching branch", "repo", pr.Repo, "branch", branch, "remote", remote)
+		if out, err := exec.CommandContext(ctx, "git", "-C", bareDir, "fetch", remote, branch).CombinedOutput(); err != nil {
+			return errMsg{err: fmt.Errorf("git fetch: %s: %w", out, err)}
 		}
 
 		// Clean existing worktree.
