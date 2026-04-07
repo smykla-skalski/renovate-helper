@@ -12,12 +12,20 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/smykla-skalski/gh-renovate-helper/internal/config"
 	"github.com/smykla-skalski/gh-renovate-helper/internal/github"
 )
+
+// prFetcher is the subset of github.Client used by per-repo and org-discovery
+// commands. Defined as an interface to enable testing without network access.
+type prFetcher interface {
+	FetchRepoPRs(repo string, cfg *config.Config) ([]github.PR, error)
+	FetchScopePRs(scope string, cfg *config.Config) ([]github.PR, error)
+}
 
 type (
 	prsLoadedMsg  struct{ prs []github.PR }
@@ -45,8 +53,14 @@ type (
 	}
 	clipboardDoneMsg struct{ count int }
 	repoPRsLoadedMsg struct {
-		repo string
-		prs  []github.PR
+		fetchedAt time.Time
+		repo      string
+		prs       []github.PR
+	}
+	orgDiscoveredMsg struct {
+		fetchedAt time.Time
+		reposPRs  map[string][]github.PR
+		org       string
 	}
 	autoModeDoneMsg struct {
 		repos    []string
@@ -66,12 +80,50 @@ func fetchPRsCmd(client *github.Client, cfg *config.Config) tea.Cmd {
 }
 
 func fetchRepoPRsCmd(client *github.Client, cfg *config.Config, repo string) tea.Cmd {
+	return fetchRepoPRsCmdWith(client, cfg, repo)
+}
+
+// fetchRepoPRsCmdWith is the testable variant that accepts a prFetcher interface.
+func fetchRepoPRsCmdWith(f prFetcher, cfg *config.Config, repo string) tea.Cmd {
 	return func() tea.Msg {
-		prs, err := client.FetchRepoPRs(repo, cfg)
+		prs, err := f.FetchRepoPRs(repo, cfg)
 		if err != nil {
 			return errMsg{err}
 		}
-		return repoPRsLoadedMsg{repo: repo, prs: prs}
+		return repoPRsLoadedMsg{repo: repo, prs: prs, fetchedAt: time.Now()}
+	}
+}
+
+// scheduledRepoRefreshCmd sleeps `after`, then fetches a single repo's PRs.
+func scheduledRepoRefreshCmd(f prFetcher, cfg *config.Config, repo string, after time.Duration) tea.Cmd {
+	return func() tea.Msg {
+		if after > 0 {
+			time.Sleep(after)
+		}
+		prs, err := f.FetchRepoPRs(repo, cfg)
+		if err != nil {
+			return errMsg{err: fmt.Errorf("refresh %s: %w", repo, err)}
+		}
+		return repoPRsLoadedMsg{repo: repo, prs: prs, fetchedAt: time.Now()}
+	}
+}
+
+// scheduledOrgDiscoverCmd sleeps `after`, then runs an org-level query to
+// discover which repos have open PRs and groups the results by repo.
+func scheduledOrgDiscoverCmd(f prFetcher, cfg *config.Config, org string, after time.Duration) tea.Cmd {
+	return func() tea.Msg {
+		if after > 0 {
+			time.Sleep(after)
+		}
+		prs, err := f.FetchScopePRs("org:"+org, cfg)
+		if err != nil {
+			return errMsg{err: fmt.Errorf("discover org %s: %w", org, err)}
+		}
+		reposPRs := make(map[string][]github.PR)
+		for _, pr := range prs {
+			reposPRs[pr.Repo] = append(reposPRs[pr.Repo], pr)
+		}
+		return orgDiscoveredMsg{org: org, reposPRs: reposPRs, fetchedAt: time.Now()}
 	}
 }
 
