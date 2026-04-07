@@ -51,29 +51,31 @@ type displayRow struct {
 }
 
 type Model struct {
-	explicitOrder map[string]int
-	orgOrder      map[string]int
-	selected      map[int]bool
-	fixing        map[string]bool
-	collapsed     map[string]bool
-	filter        string
-	prs           []github.PR
-	filtered      []github.PR
-	rows          []displayRow
-	cursor        int
-	offset        int
-	width         int
-	height        int
-	sort          sortMode
+	explicitOrder  map[string]int
+	orgOrder       map[string]int
+	selected       map[int]bool
+	fixing         map[string]bool
+	collapsed      map[string]bool
+	collapseAnchor map[string]int // repo -> filtered[] prIndex before collapse; cleared on expand or cursor move
+	filter         string
+	prs            []github.PR
+	filtered       []github.PR
+	rows           []displayRow
+	cursor         int
+	offset         int
+	width          int
+	height         int
+	sort           sortMode
 }
 
 func New() Model {
 	return Model{
-		selected:      make(map[int]bool),
-		fixing:        make(map[string]bool),
-		collapsed:     make(map[string]bool),
-		explicitOrder: make(map[string]int),
-		orgOrder:      make(map[string]int),
+		selected:       make(map[int]bool),
+		fixing:         make(map[string]bool),
+		collapsed:      make(map[string]bool),
+		collapseAnchor: make(map[string]int),
+		explicitOrder:  make(map[string]int),
+		orgOrder:       make(map[string]int),
 	}
 }
 
@@ -176,8 +178,30 @@ func (m Model) prCountInRepo(repo string) int {
 }
 
 func (m Model) toggleCollapse(repo string) Model {
+	wasCollapsed := m.collapsed[repo]
 	m.collapsed[repo] = !m.collapsed[repo]
 	m.rows = m.buildRows()
+
+	if !wasCollapsed {
+		// Just collapsed: move cursor to the repo header row.
+		for i, r := range m.rows {
+			if r.kind == rowHeader && r.repo == repo {
+				m.cursor = i
+				break
+			}
+		}
+	} else if anchor, ok := m.collapseAnchor[repo]; ok {
+		// Expanding with a remembered position: restore it.
+		delete(m.collapseAnchor, repo)
+		for i, r := range m.rows {
+			if r.kind == rowPR && r.prIndex == anchor {
+				m.cursor = i
+				break
+			}
+		}
+	}
+	// else: expanding without anchor, cursor stays on the header.
+
 	if m.cursor >= len(m.rows) {
 		m.cursor = max(0, len(m.rows)-1)
 	}
@@ -475,10 +499,24 @@ func (m Model) rowAtY(y int) (int, bool) {
 	return idx, true
 }
 
+// clearAnchorAtCursor drops the collapse anchor for the current row's repo if
+// the cursor is sitting on a collapsed header. Call this before any cursor move
+// so that navigation away from the header counts as "user moved".
+func (m Model) clearAnchorAtCursor() Model {
+	if m.cursor < len(m.rows) && m.rows[m.cursor].kind == rowHeader {
+		repo := m.rows[m.cursor].repo
+		if m.collapsed[repo] {
+			delete(m.collapseAnchor, repo)
+		}
+	}
+	return m
+}
+
 func (m Model) moveUp(n int) Model {
 	if len(m.rows) == 0 {
 		return m
 	}
+	m = m.clearAnchorAtCursor()
 	m.cursor = max(0, m.cursor-n)
 	if m.cursor < m.offset {
 		m.offset = m.cursor
@@ -498,6 +536,7 @@ func (m Model) moveDown(n int) Model {
 	if len(m.rows) == 0 {
 		return m
 	}
+	m = m.clearAnchorAtCursor()
 	m.cursor = min(len(m.rows)-1, m.cursor+n)
 	for m.cursor > m.lastVisibleIndex(m.offset) {
 		m.offset++
@@ -514,12 +553,26 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		case key.Matches(msg, downKey):
 			m = m.moveDown(1)
 		case key.Matches(msg, expandKey):
+			// Enter: toggle collapse on header rows. PR rows are handled by app.go.
 			if m.cursor < len(m.rows) && m.rows[m.cursor].kind == rowHeader {
 				m = m.toggleCollapse(m.rows[m.cursor].repo)
 			}
 		case key.Matches(msg, selectKey):
-			if idx := m.cursorPRIndex(); idx >= 0 {
+			if m.cursor < len(m.rows) && m.rows[m.cursor].kind == rowHeader {
+				// Space on header: toggle collapse.
+				m = m.toggleCollapse(m.rows[m.cursor].repo)
+			} else if idx := m.cursorPRIndex(); idx >= 0 {
 				m.selected[idx] = !m.selected[idx]
+			}
+		case key.Matches(msg, collapseKey):
+			// z: collapse the current repo from any row, remembering position.
+			if m.cursor < len(m.rows) {
+				repo := m.rows[m.cursor].repo
+				if !m.collapsed[repo] && m.rows[m.cursor].kind == rowPR {
+					// Store which PR row we're on so we can restore on expand.
+					m.collapseAnchor[repo] = m.rows[m.cursor].prIndex
+				}
+				m = m.toggleCollapse(repo)
 			}
 		case key.Matches(msg, sortKey):
 			m.sort = (m.sort + 1) % 3
@@ -537,8 +590,14 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		if msg.Button == tea.MouseLeft {
 			if idx, ok := m.rowAtY(tea.Mouse(msg).Y); ok {
 				if m.rows[idx].kind == rowHeader {
+					// Clicking a different header than the current cursor: clear anchor
+					// for any collapsed header we're leaving.
+					if idx != m.cursor {
+						m = m.clearAnchorAtCursor()
+					}
 					m = m.toggleCollapse(m.rows[idx].repo)
 				} else {
+					m = m.clearAnchorAtCursor()
 					m.cursor = idx
 				}
 			}
@@ -548,11 +607,12 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 }
 
 var (
-	upKey     = key.NewBinding(key.WithKeys("k", "up"))
-	downKey   = key.NewBinding(key.WithKeys("j", "down"))
-	expandKey = key.NewBinding(key.WithKeys("enter"))
-	selectKey = key.NewBinding(key.WithKeys(" "))
-	sortKey   = key.NewBinding(key.WithKeys("s"))
+	upKey       = key.NewBinding(key.WithKeys("k", "up"))
+	downKey     = key.NewBinding(key.WithKeys("j", "down"))
+	expandKey   = key.NewBinding(key.WithKeys("enter"))
+	selectKey   = key.NewBinding(key.WithKeys(" "))
+	sortKey     = key.NewBinding(key.WithKeys("s"))
+	collapseKey = key.NewBinding(key.WithKeys("z"))
 )
 
 func (m Model) View() string {

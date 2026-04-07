@@ -299,8 +299,12 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if pr, ok := m.list.Selected(); ok {
 			m.detail = detail.New(pr).SetSize(m.width, m.height-1)
 			m.current = viewDetail
+			return m, nil
 		}
-		return m, nil
+		// Cursor is on a header row: let prlist handle it (toggle collapse).
+		var cmd tea.Cmd
+		m.list, cmd = m.list.Update(msg)
+		return m, cmd
 
 	case key.Matches(msg, keys.Open):
 		if pr, ok := m.list.Selected(); ok {
